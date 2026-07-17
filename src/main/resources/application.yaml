@@ -1,0 +1,167 @@
+spring:
+  application:
+    name: dsp-batch
+  datasource:
+    batch:
+      url: jdbc:postgresql://localhost:6666/batch_metadata
+      username: batch
+      password: batch
+      driver-class-name: org.postgresql.Driver
+      hikari:
+        maximum-pool-size: 10
+        minimum-idle: 2
+        pool-name: batch-pool
+        connection-test-query: SELECT 1
+    source:
+      url: jdbc:postgresql://localhost:6666/source_db
+      username: source_user
+      password: source_user
+      driver-class-name: org.postgresql.Driver
+      hikari:
+        maximum-pool-size: 20
+        minimum-idle: 5
+        pool-name: source-pool
+    target:
+      url: jdbc:postgresql://localhost:6666/target_db
+      username: target_user
+      password: target_user
+      driver-class-name: org.postgresql.Driver
+      hikari:
+        maximum-pool-size: 20
+        minimum-idle: 5
+        pool-name: target-pool
+  batch:
+    job:
+      enabled: false
+    jdbc:
+      initialize-schema: never
+
+server:
+  port: 8086
+
+# Administrative unit table configurations (JobTableConfig)
+batch:
+  admin-unit:
+    level-1:
+      source-table: states
+      target-table: states
+      primary-key: cd_uf
+      geometry-column: geom
+      where-clause: "1=1"
+      comparison-columns:
+        - nm_uf
+        - sigla_uf
+        - cd_regiao
+        - nm_regiao
+        - sigla_rg
+        - area_km2
+      persist-columns:
+        - cd_uf
+        - nm_uf
+        - sigla_uf
+        - cd_regiao
+        - nm_regiao
+        - sigla_rg
+        - area_km2
+      layer-name: states
+      srid: 4674
+      change-detection-strategy: DEFAULT
+    level-2:
+      source-table: usr_geocar_aplicacao.estado
+      target-table: geo_public_consultation.estado
+      primary-key: cod_estado
+      partition-column: cod_estado_ibge
+      geometry-column: geo_localizacao
+      where-clause: "1=1"
+      comparison-columns:
+        - nom_estado
+        - num_area
+        - id_regiao
+      persist-columns:
+        - cod_estado
+        - nom_estado
+        - cod_estado_ibge
+        - num_area
+        - id_regiao
+      layer-name: estado
+      srid: 4674
+      change-detection-strategy: DEFAULT
+    level-3:
+      source-table: usr_geocar_aplicacao.municipio
+      target-table: geo_public_consultation.municipios
+      primary-key: idt_municipio
+      geometry-column: geo_localizacao
+      where-clause: "1=1"
+      comparison-columns:
+        - nom_municipio
+        - cod_estado
+        - num_hectares_modulo_fiscal
+        - num_area
+      persist-columns:
+        - idt_municipio
+        - nom_municipio
+        - cod_estado
+        - num_hectares_modulo_fiscal
+        - num_area
+      layer-name: municipio
+      srid: 4674
+      change-detection-strategy: DEFAULT
+  rural-property:
+    source-table: property
+    target-table: property
+    primary-key: id
+    geometry-column: geometry
+    where-clause: "1=1"
+    comparison-columns:
+      - created_date
+    persist-columns:
+      - id
+      - property_name
+      - state_district
+      - municipality
+      - zipcode
+      - location_zone
+      - created_date
+    layer-name: property
+    srid: 4326
+    change-detection-strategy: DATE_RANGE
+    start-date: 2024-01-01
+    end-date: 2024-12-31
+
+parallelization:
+  jobs:
+    adminUnitLevel1GeoserverJob:
+      enabled: true
+      thread-pool-size: 1
+      chunk-size: 1
+      page-size: 1000
+      queue-capacity: 100
+    adminUnitLevel2GeoserverJob:
+      enabled: true
+      thread-pool-size: 12
+      chunk-size: 1
+      page-size: 1000
+      queue-capacity: 100
+    adminUnitLevel3GeoserverJob:
+      enabled: true
+      thread-pool-size: 12
+      chunk-size: 470
+      page-size: 1000
+      queue-capacity: 100
+    ruralPropertyGeoserverJob:
+      enabled: true
+      thread-pool-size: 1
+      chunk-size: 100
+      page-size: 1000
+      queue-capacity: 100
+
+execution-jobs:
+  admin-unit-level-1-geoserver-job: true
+  admin-unit-level-2-geoserver-job: false
+  admin-unit-level-3-geoserver-job: false
+  rural-property-geoserver-job: false
+
+logging:
+  level:
+    br.car.dsp_batch: INFO
+    br.car.dsp_batch.batch.strategy: INFO
