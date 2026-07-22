@@ -1,9 +1,14 @@
+# Demo YAML: import source_geo_import_db -> target_geo_import_db (3 levels).
+# Hierarchy: continent (L1) -> country (L2) -> admin_division (L3).
+# Copy or merge into application.yaml for local import tests.
+# Requires: scripts 01/02 in this folder + batch_metadata (see docs/5-scripts-sql-metadados.md).
+
 spring:
   application:
     name: dsp-batch
   datasource:
     batch:
-      url: jdbc:postgresql://localhost:6666/batch_metadata
+      url: jdbc:postgresql://localhost:5432/batch_metadata
       username: batch
       password: batch
       driver-class-name: org.postgresql.Driver
@@ -13,7 +18,7 @@ spring:
         pool-name: batch-pool
         connection-test-query: SELECT 1
     source:
-      url: jdbc:postgresql://localhost:6666/source_db
+      url: jdbc:postgresql://localhost:5432/source_geo_import_db
       username: source_user
       password: source_user
       driver-class-name: org.postgresql.Driver
@@ -22,7 +27,7 @@ spring:
         minimum-idle: 5
         pool-name: source-pool
     target:
-      url: jdbc:postgresql://localhost:6666/target_db
+      url: jdbc:postgresql://localhost:5432/target_geo_db
       username: target_user
       password: target_user
       driver-class-name: org.postgresql.Driver
@@ -39,72 +44,69 @@ spring:
 server:
   port: 8086
 
-# Administrative unit table configurations (JobTableConfig)
 batch:
   admin-unit:
     level-1:
-      source-table: states
-      target-table: states
-      primary-key: cd_uf
-      geometry-column: geom
+      source-table: source_admin_units.source_l1_continents
+      target-table: target_admin_units.target_l1_continent
+      primary-key: source_continent_pk
+      geometry-column: source_continent_geom
       where-clause: "1=1"
       comparison-columns:
-        - nm_uf
-        - sigla_uf
-        - cd_regiao
-        - nm_regiao
-        - sigla_rg
-        - area_km2
+        - source_continent_name
       persist-columns:
-        - cd_uf
-        - nm_uf
-        - sigla_uf
-        - cd_regiao
-        - nm_regiao
-        - sigla_rg
-        - area_km2
-      layer-name: states
-      srid: 4674
+        - source_continent_pk
+        - source_continent_name
+      column-mapping:
+        source_continent_pk: target_continent_id
+        source_continent_name: target_continent_label
+        source_continent_geom: target_continent_geometry
+      layer-name: source-continents-geoserver-layer
+      srid: 4326
       change-detection-strategy: DEFAULT
     level-2:
-      source-table: usr_geocar_aplicacao.estado
-      target-table: geo_public_consultation.estado
-      primary-key: cod_estado
-      partition-column: cod_estado_ibge
-      geometry-column: geo_localizacao
+      source-table: source_admin_units.source_l2_countries
+      target-table: target_admin_units.target_l2_country
+      primary-key: source_country_pk
+      partition-column: source_continent_fk
+      geometry-column: source_country_geom
       where-clause: "1=1"
       comparison-columns:
-        - nom_estado
-        - num_area
-        - id_regiao
+        - source_country_name
+        - source_continent_fk
       persist-columns:
-        - cod_estado
-        - nom_estado
-        - cod_estado_ibge
-        - num_area
-        - id_regiao
-      layer-name: estado
-      srid: 4674
+        - source_country_pk
+        - source_country_name
+        - source_continent_fk
+      column-mapping:
+        source_country_pk: target_country_id
+        source_country_name: target_country_label
+        source_continent_fk: target_continent_ref
+        source_country_geom: target_country_geometry
+      layer-name: source-countries-geoserver-layer
+      srid: 4326
       change-detection-strategy: DEFAULT
     level-3:
-      source-table: usr_geocar_aplicacao.municipio
-      target-table: geo_public_consultation.municipios
-      primary-key: idt_municipio
-      geometry-column: geo_localizacao
+      source-table: source_admin_units.source_l3_admin_areas
+      target-table: target_admin_units.target_l3_admin_division
+      primary-key: source_area_pk
+      partition-column: source_country_fk
+      geometry-column: source_area_geom
       where-clause: "1=1"
       comparison-columns:
-        - nom_municipio
-        - cod_estado
-        - num_hectares_modulo_fiscal
-        - num_area
+        - source_area_name
+        - source_country_fk
       persist-columns:
-        - idt_municipio
-        - nom_municipio
-        - cod_estado
-        - num_hectares_modulo_fiscal
-        - num_area
-      layer-name: municipio
-      srid: 4674
+        - source_area_pk
+        - source_area_name
+        - source_country_fk
+      column-mapping:
+        source_area_pk: target_division_id
+        source_area_name: target_division_label
+        source_country_fk: target_country_ref
+        source_area_geom: target_division_geometry
+      layer-name: source-admin-areas-geoserver-layer
+      srid: 4326
       change-detection-strategy: DEFAULT
   rural-property:
     source-table: property
@@ -117,11 +119,6 @@ batch:
     persist-columns:
       - id
       - property_name
-      - state_district
-      - municipality
-      - zipcode
-      - location_zone
-      - created_date
     layer-name: property
     srid: 4326
     change-detection-strategy: DATE_RANGE
@@ -157,9 +154,9 @@ parallelization:
 
 execution-jobs:
   admin-unit-level-1-geoserver-job: true
-  admin-unit-level-2-geoserver-job: false
-  admin-unit-level-3-geoserver-job: false
-  rural-property-geoserver-job: false
+  admin-unit-level-2-geoserver-job: true
+  admin-unit-level-3-geoserver-job: true
+  rural-property-geoserver-job: true
 
 logging:
   level:

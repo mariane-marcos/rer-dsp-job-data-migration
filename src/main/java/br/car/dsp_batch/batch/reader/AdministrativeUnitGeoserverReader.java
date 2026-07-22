@@ -28,18 +28,20 @@ public class AdministrativeUnitGeoserverReader
                                              String readerName) {
         super(dataSource, minId, maxId, pageSize);
         this.setName(readerName);
-        this.setQueryProvider(createQueryProvider(tableConfig));
+        boolean useIdRange = minId != null && maxId != null;
+        this.setQueryProvider(createQueryProvider(tableConfig, useIdRange));
         this.setRowMapper(new AdministrativeUnitRowMapper(tableConfig));
     }
 
-    private PagingQueryProvider createQueryProvider(JobTableConfig tableConfig) {
+    private PagingQueryProvider createQueryProvider(JobTableConfig tableConfig, boolean useIdRange) {
         String partitionColumn = tableConfig.getPartitionColumn();
         String geom = tableConfig.getGeometryColumn();
         List<String> persistColumns = tableConfig.getPersistColumns();
 
         String selectColumns = String.join(", ", persistColumns);
 
-        // Ensure partition column is selected even if not in persist columns
+        // Ensures the partition column is included in the SELECT clause,
+        // even if it is not listed in persist-columns.
         if (!persistColumns.contains(partitionColumn)) {
             selectColumns = selectColumns + ", " + partitionColumn;
         }
@@ -50,15 +52,24 @@ public class AdministrativeUnitGeoserverReader
                         + ", public.ST_AsGeoJSON(" + geom + ")::text AS geometry_geo_json"
         );
         queryProvider.setFromClause("FROM " + tableConfig.getSourceTable());
-        // CAST evita erro quando a coluna de partição é varchar com valores numéricos
-        // (ex.: cd_uf), já que minId/maxId são Long.
-        String numericPartitionColumn = "CAST(" + partitionColumn + " AS BIGINT)";
-        queryProvider.setWhereClause(
-                "WHERE " + numericPartitionColumn + " >= :minId AND " + numericPartitionColumn + " <= :maxId"
-                        + " AND " + geom + " IS NOT NULL"
-                        + " AND NOT ST_IsEmpty(ST_Multi(ST_CollectionExtract("
-                        + "ST_MakeValid(COALESCE(" + geom + ", ST_Buffer(" + geom + ", 0))), 3)))"
-        );
+
+        String geometryFilter = geom + " IS NOT NULL"
+                + " AND NOT ST_IsEmpty(ST_Multi(ST_CollectionExtract("
+                + "ST_MakeValid(COALESCE(" + geom + ", ST_Buffer(" + geom + ", 0))), 3)))";
+
+        if (useIdRange) {
+            // CAST handles VARCHAR columns containing numeric values (e.g., cd_uf);
+            // minId/maxId are Long values.
+            String numericPartitionColumn = "CAST(" + partitionColumn + " AS BIGINT)";
+            queryProvider.setWhereClause(
+                    "WHERE " + numericPartitionColumn + " >= :minId AND " + numericPartitionColumn + " <= :maxId"
+                            + " AND " + geometryFilter
+            );
+        } else {
+            // No range: alphanumeric PK/column, parallelization disabled,
+            // or a single partition.
+            queryProvider.setWhereClause("WHERE " + geometryFilter);
+        }
 
         Map<String, Order> sortKeys = new HashMap<>();
         sortKeys.put(partitionColumn, Order.ASCENDING);

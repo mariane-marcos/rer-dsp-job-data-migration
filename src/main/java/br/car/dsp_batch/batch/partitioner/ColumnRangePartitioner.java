@@ -11,7 +11,8 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * Partitions a numeric ID column into contiguous ranges for parallel workers.
+ * Partitions a numeric column into contiguous ranges for parallel workers.
+ * If the column is alphanumeric, creates a single partition without a min/max range.
  */
 @Slf4j
 public class ColumnRangePartitioner implements Partitioner {
@@ -30,10 +31,18 @@ public class ColumnRangePartitioner implements Partitioner {
 
     @Override
     public Map<String, ExecutionContext> partition(int gridSize) {
-        // CAST garante MIN/MAX numérico mesmo se a coluna for varchar (ex.: cd_uf).
+        if (!isNumericColumn()) {
+            log.info(
+                    "Coluna '{}' em '{}' não é numérica (ou está vazia). "
+                            + "Criando uma única partição sem faixa minId/maxId.",
+                    column, table);
+            return singlePartitionWithoutRange();
+        }
+
+        // CAST garante MIN/MAX numérico mesmo se a coluna for varchar com dígitos (ex.: cd_uf).
         String numericColumn = "CAST(" + column + " AS BIGINT)";
         String minMaxSql = String.format("SELECT MIN(%s), MAX(%s) FROM %s", numericColumn, numericColumn, table);
-        if (whereClause != null && !whereClause.trim().isEmpty() && !"1=1".equals(whereClause.trim())) {
+        if (hasWhereClause()) {
             minMaxSql += " WHERE " + whereClause;
         }
 
@@ -88,5 +97,32 @@ public class ColumnRangePartitioner implements Partitioner {
 
             return result;
         });
+    }
+
+    /**
+     * Retorna true somente se todos os valores não nulos da coluna forem inteiros
+     * (permitindo varchar numérico como "11" ou "35").
+     */
+    private boolean isNumericColumn() {
+        String sql = String.format(
+                "SELECT bool_and(TRIM(%s::text) ~ '^-?[0-9]+$') FROM %s WHERE %s IS NOT NULL",
+                column, table, column);
+        if (hasWhereClause()) {
+            sql += " AND (" + whereClause + ")";
+        }
+
+        log.debug("Checking if partition column is numeric: {}", sql);
+        Boolean allNumeric = jdbcTemplate.queryForObject(sql, Boolean.class);
+        return Boolean.TRUE.equals(allNumeric);
+    }
+
+    private Map<String, ExecutionContext> singlePartitionWithoutRange() {
+        Map<String, ExecutionContext> result = new HashMap<>();
+        result.put("partition0", new ExecutionContext());
+        return result;
+    }
+
+    private boolean hasWhereClause() {
+        return whereClause != null && !whereClause.trim().isEmpty();
     }
 }
