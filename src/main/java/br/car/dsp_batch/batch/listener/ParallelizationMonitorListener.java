@@ -40,7 +40,7 @@ public class ParallelizationMonitorListener implements ChunkListener {
         long readCount = context.getStepContext().getStepExecution().getReadCount();
         long writeCount = context.getStepContext().getStepExecution().getWriteCount();
 
-        log.debug("Job: {} | Step: {} | Thread: {} | Completed chunk {} | Read: {} | Written: {} at {}",
+        log.info("Job: {} | Step: {} | Thread: {} | Completed chunk {} | Read: {} | Written: {} at {}",
                 jobName, stepName, threadName, commitCount, readCount, writeCount,
                 LocalDateTime.now().format(FORMATTER));
     }

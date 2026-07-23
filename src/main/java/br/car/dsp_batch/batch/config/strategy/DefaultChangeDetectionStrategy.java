@@ -235,11 +235,17 @@ public class DefaultChangeDetectionStrategy implements ChangeDetectionStrategy {
         log.warn("Deleted {} inactive records from target: {}", deleted, idsToDelete);
     }
 
-    private Object normalizeId(Object id) {
-        if (id instanceof Number) {
-            return ((Number) id).longValue();
+    /**
+     * Normalizes PK values so source numeric IDs match target varchar IDs (e.g. 1L vs "1").
+     */
+    Object normalizeId(Object id) {
+        if (id == null) {
+            return null;
         }
-        return id;
+        if (id instanceof Number) {
+            return String.valueOf(((Number) id).longValue());
+        }
+        return id.toString().trim();
     }
 
     private record RecordComparison(Object id, String hash, String bbox) {

@@ -13,9 +13,9 @@ import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
- * Estratégia de detecção por intervalo de datas.
- * Considera alterados os registros cuja(s) coluna(s) de comparação
- * (ex.: {@code created_date}) estejam entre {@code startDate} e {@code endDate}, inclusive.
+ * Date-range change detection strategy.
+ * Treats records as changed when comparison column(s) (e.g. {@code created_date})
+ * fall between {@code startDate} and {@code endDate}, inclusive.
  */
 @Slf4j
 @Component
@@ -36,22 +36,22 @@ public class DateRangeChangeDetectionStrategy implements ChangeDetectionStrategy
 
         if (startDate == null || endDate == null) {
             throw new IllegalArgumentException(
-                    "Estratégia DATE_RANGE exige startDate e endDate em JobTableConfig para a tabela "
+                    "DATE_RANGE strategy requires startDate and endDate in JobTableConfig for table "
                             + tableConfig.getSourceTable());
         }
         if (startDate.isAfter(endDate)) {
             throw new IllegalArgumentException(
-                    "startDate (" + startDate + ") não pode ser posterior a endDate (" + endDate + ")");
+                    "startDate (" + startDate + ") must not be after endDate (" + endDate + ")");
         }
 
         List<String> comparisonColumns = tableConfig.getComparisonColumns();
         if (comparisonColumns == null || comparisonColumns.isEmpty()) {
             throw new IllegalArgumentException(
-                    "Estratégia DATE_RANGE exige comparison-columns para a tabela "
+                    "DATE_RANGE strategy requires comparison-columns for table "
                             + tableConfig.getSourceTable());
         }
 
-        log.info("Iniciando detecção por intervalo de datas para tabela={} ({} a {}) nas colunas={}",
+        log.info("Starting date-range change detection for table={} ({} to {}) on columns={}",
                 tableConfig.getSourceTable(), startDate, endDate, comparisonColumns);
 
         List<String> bboxes = fetchAffectedBboxes(sourceJdbc, tableConfig, startDate, endDate);
@@ -62,10 +62,10 @@ public class DateRangeChangeDetectionStrategy implements ChangeDetectionStrategy
                 .getExecutionContext();
 
         if (bboxes.isEmpty()) {
-            log.info("Nenhuma alteração no intervalo para {}", tableConfig.getSourceTable());
+            log.info("No changes in date range for {}", tableConfig.getSourceTable());
             jobContext.put(DefaultChangeDetectionStrategy.CTX_HAS_CHANGES, false);
         } else {
-            log.info("Detectadas {} áreas com alterações no intervalo em {}",
+            log.info("Detected {} areas with changes in date range for {}",
                     bboxes.size(), tableConfig.getSourceTable());
             jobContext.put(DefaultChangeDetectionStrategy.CTX_HAS_CHANGES, true);
             jobContext.put(DefaultChangeDetectionStrategy.CTX_AFFECTED_BBOXES, bboxes);
@@ -89,13 +89,13 @@ public class DateRangeChangeDetectionStrategy implements ChangeDetectionStrategy
                     rs.getDouble("maxy")));
         }, params);
 
-        log.info("Fonte: {} registros no intervalo de datas", bboxes.size());
+        log.info("Source: {} records in date range", bboxes.size());
         return bboxes;
     }
 
     /**
-     * Monta a consulta usando apenas propriedades de {@link JobTableConfig}
-     * (tabela, geometria, SRID, where e colunas de comparação).
+     * Builds the query using only {@link JobTableConfig} properties
+     * (table, geometry, SRID, where-clause and comparison columns).
      */
     private String buildDateRangeSql(JobTableConfig tableConfig) {
         String pk = tableConfig.getPrimaryKey();

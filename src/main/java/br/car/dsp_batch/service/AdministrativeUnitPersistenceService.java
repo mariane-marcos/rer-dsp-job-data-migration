@@ -32,16 +32,22 @@ public class AdministrativeUnitPersistenceService {
         }
 
         List<AdministrativeUnitDTO> validItems = new ArrayList<>();
+        int skippedWithoutGeometry = 0;
         for (AdministrativeUnitDTO item : items) {
             if (item.getGeometryGeoJson() != null && !item.getGeometryGeoJson().isBlank()) {
                 validItems.add(item);
             } else {
+                skippedWithoutGeometry++;
                 log.warn("Skipping record id={} due to null/empty geometry", item.getId());
             }
         }
 
         if (validItems.isEmpty()) {
-            log.info("No valid records with geometry to persist for {}", tableConfig.getTargetTable());
+            log.info(
+                    "Upserted 0 records into {} (skipped {} without geometry)",
+                    tableConfig.getTargetTable(),
+                    skippedWithoutGeometry
+            );
             return;
         }
 
@@ -87,8 +93,12 @@ public class AdministrativeUnitPersistenceService {
                 }
                 ps.setString(index, item.getGeometryGeoJson());
             });
-            log.debug("UPSERT completed for {} records into {}",
-                    validItems.size(), tableConfig.getTargetTable());
+            log.info(
+                    "Upserted {} records into {} (skipped {} without geometry)",
+                    validItems.size(),
+                    tableConfig.getTargetTable(),
+                    skippedWithoutGeometry
+            );
         } catch (DataAccessException e) {
             log.error("Critical failure during batch UPSERT for {}", tableConfig.getTargetTable(), e);
             throw new RuntimeException(

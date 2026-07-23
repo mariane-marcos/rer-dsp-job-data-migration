@@ -2,6 +2,8 @@ package br.car.dsp_batch.batch.config;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.Job;
+import org.springframework.batch.core.JobExecution;
+import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.launch.JobLauncher;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -48,6 +50,13 @@ public class JobRunner implements CommandLineRunner {
 
     @Override
     public void run(String... args) throws Exception {
+        log.info(
+                "Job execution plan: {}={}, {}={}, {}={}, {}={}",
+                adminUnitLevel1GeoserverJob.getName(), enabledLabel(runLevel1),
+                adminUnitLevel2GeoserverJob.getName(), enabledLabel(runLevel2),
+                adminUnitLevel3GeoserverJob.getName(), enabledLabel(runLevel3),
+                ruralPropertyGeoserverJob.getName(), enabledLabel(runRuralProperty)
+        );
         runJobIfEnabled(runLevel1, adminUnitLevel1GeoserverJob);
         runJobIfEnabled(runLevel2, adminUnitLevel2GeoserverJob);
         runJobIfEnabled(runLevel3, adminUnitLevel3GeoserverJob);
@@ -60,8 +69,43 @@ public class JobRunner implements CommandLineRunner {
             return;
         }
         log.info("Starting job {}", job.getName());
-        jobLauncher.run(job, new org.springframework.batch.core.JobParametersBuilder()
+        long startedAt = System.currentTimeMillis();
+        JobExecution execution = jobLauncher.run(job, new org.springframework.batch.core.JobParametersBuilder()
                 .addLong("timestamp", System.currentTimeMillis())
                 .toJobParameters());
+        long durationMs = System.currentTimeMillis() - startedAt;
+
+        log.info(
+                "Job {} finished with status={} in {} ms",
+                job.getName(),
+                execution.getStatus(),
+                durationMs
+        );
+        if (!execution.getAllFailureExceptions().isEmpty()) {
+            log.error(
+                    "Job {} exitStatus={} failures={}",
+                    job.getName(),
+                    execution.getExitStatus(),
+                    execution.getAllFailureExceptions().size()
+            );
+            for (Throwable failure : execution.getAllFailureExceptions()) {
+                log.error("Job {} failure: {}", job.getName(), failure.getMessage(), failure);
+            }
+        }
+        for (StepExecution step : execution.getStepExecutions()) {
+            log.info(
+                    "  Step {}: read={} write={} filter={} skip={} commit={}",
+                    step.getStepName(),
+                    step.getReadCount(),
+                    step.getWriteCount(),
+                    step.getFilterCount(),
+                    step.getSkipCount(),
+                    step.getCommitCount()
+            );
+        }
+    }
+
+    private static String enabledLabel(boolean enabled) {
+        return enabled ? "enabled" : "disabled";
     }
 }

@@ -1,8 +1,6 @@
 # Demo YAML: import source_geo_import_db -> target_geo_import_db (3 levels).
 # Hierarchy: continent (L1) -> country (L2) -> admin_division (L3).
 # Copy or merge into application.yaml for local import tests.
-# Requires: scripts 01/02 in this folder + batch_metadata (see docs/5-scripts-sql-metadados.md).
-
 spring:
   application:
     name: dsp-batch
