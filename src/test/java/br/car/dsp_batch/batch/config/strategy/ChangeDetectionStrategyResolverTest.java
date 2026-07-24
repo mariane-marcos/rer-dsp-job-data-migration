@@ -1,7 +1,7 @@
 package br.car.dsp_batch.batch.config.strategy;
 
 import br.car.dsp_batch.batch.config.table.AdministrativeUnitTableProperties;
-import br.car.dsp_batch.batch.config.table.RuralPropertyTableProperties;
+import br.car.dsp_batch.batch.config.table.AreaOfInterestTableProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.StepExecution;
@@ -106,7 +106,7 @@ class ChangeDetectionStrategyResolverTest {
         doAnswer(invocation -> null)
                 .when(sourceJdbc).query(anyString(), any(RowCallbackHandler.class), any(Object[].class));
 
-        RuralPropertyTableProperties tableConfig = new RuralPropertyTableProperties();
+        AreaOfInterestTableProperties tableConfig = new AreaOfInterestTableProperties();
         tableConfig.setSourceTable("property");
         tableConfig.setTargetTable("property");
         tableConfig.setPrimaryKey("id");

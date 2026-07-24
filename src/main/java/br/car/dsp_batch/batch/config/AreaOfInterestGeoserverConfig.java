@@ -24,25 +24,25 @@ import org.springframework.transaction.PlatformTransactionManager;
 import javax.sql.DataSource;
 
 /**
- * Job Spring Batch de atualização Geoserver para Rural Properties.
- * Reutiliza o fluxo de unidades administrativas, com estratégia {@code DATE_RANGE}.
+ * Job Spring Batch to update Geoserver and DSP Backend for Area of Interest.
+ * Reuses the flow of administrative units.
  */
 @Configuration
-public class RuralPropertyGeoserverConfig extends AdministrativeUnitGeoserverConfig {
+public class AreaOfInterestGeoserverConfig extends AdministrativeUnitGeoserverConfig {
 
-    public static final String JOB_NAME = "ruralPropertyGeoserverJob";
-    public static final String NAME_PREFIX = "ruralProperty";
+    public static final String JOB_NAME = "areaOfInterestGeoserverJob";
+    public static final String NAME_PREFIX = "areaOfInterest";
 
     private final JobTableConfig tableConfig;
 
-    public RuralPropertyGeoserverConfig(
+    public AreaOfInterestGeoserverConfig(
             ParallelizationConfig parallelizationConfig,
             ParallelizationMonitorListener parallelizationMonitorListener,
             ChangeDecider changeDecider,
             GeoCacheUpdateListener geoCacheUpdateListener,
             ChangeDetectionStrategyResolver strategyResolver,
             AdministrativeUnitPersistenceService persistenceService,
-            @Qualifier("ruralPropertyTableConfig") JobTableConfig tableConfig) {
+            @Qualifier("areaOfInterestTableConfig") JobTableConfig tableConfig) {
         super(parallelizationConfig, parallelizationMonitorListener, changeDecider,
                 geoCacheUpdateListener, strategyResolver, persistenceService);
         this.tableConfig = tableConfig;
@@ -64,15 +64,15 @@ public class RuralPropertyGeoserverConfig extends AdministrativeUnitGeoserverCon
     }
 
     @Bean(name = JOB_NAME)
-    public Job ruralPropertyGeoserverJob(
+    public Job areaOfInterestGeoserverJob(
             JobRepository jobRepository,
-            @Qualifier("ruralPropertyChangeDetectionStep") Step changeDetectionStep,
-            @Qualifier("ruralPropertyGeoserverMasterStep") Step masterStep) {
+            @Qualifier("areaOfInterestChangeDetectionStep") Step changeDetectionStep,
+            @Qualifier("areaOfInterestGeoserverMasterStep") Step masterStep) {
         return buildJob(jobRepository, changeDetectionStep, masterStep);
     }
 
-    @Bean(name = "ruralPropertyChangeDetectionStep")
-    public Step ruralPropertyChangeDetectionStep(
+    @Bean(name = "areaOfInterestChangeDetectionStep")
+    public Step areaOfInterestChangeDetectionStep(
             JobRepository jobRepository,
             PlatformTransactionManager transactionManager,
             @Qualifier("sourceDataSource") DataSource sourceDataSource,
@@ -80,48 +80,48 @@ public class RuralPropertyGeoserverConfig extends AdministrativeUnitGeoserverCon
         return buildChangeDetectionStep(jobRepository, transactionManager, sourceDataSource, targetDataSource);
     }
 
-    @Bean(name = "ruralPropertyGeoserverMasterStep")
-    public Step ruralPropertyGeoserverMasterStep(
+    @Bean(name = "areaOfInterestGeoserverMasterStep")
+    public Step areaOfInterestGeoserverMasterStep(
             JobRepository jobRepository,
-            @Qualifier("ruralPropertyGeoserverWorkerStep") Step workerStep,
-            @Qualifier("ruralPropertyGeoserverPartitioner") Partitioner partitioner,
-            @Qualifier("ruralPropertyGeoserverTaskExecutor") TaskExecutor taskExecutor) {
+            @Qualifier("areaOfInterestGeoserverWorkerStep") Step workerStep,
+            @Qualifier("areaOfInterestGeoserverPartitioner") Partitioner partitioner,
+            @Qualifier("areaOfInterestGeoserverTaskExecutor") TaskExecutor taskExecutor) {
         return buildMasterStep(jobRepository, workerStep, partitioner, taskExecutor);
     }
 
-    @Bean(name = "ruralPropertyGeoserverWorkerStep")
-    public Step ruralPropertyGeoserverWorkerStep(
+    @Bean(name = "areaOfInterestGeoserverWorkerStep")
+    public Step areaOfInterestGeoserverWorkerStep(
             JobRepository jobRepository,
             PlatformTransactionManager transactionManager,
-            @Qualifier("ruralPropertyGeoserverReader") ItemReader<AdministrativeUnitDTO> reader,
-            @Qualifier("ruralPropertyGeoserverProcessor")
+            @Qualifier("areaOfInterestGeoserverReader") ItemReader<AdministrativeUnitDTO> reader,
+            @Qualifier("areaOfInterestGeoserverProcessor")
             ItemProcessor<AdministrativeUnitDTO, AdministrativeUnitDTO> processor,
-            @Qualifier("ruralPropertyGeoserverWriter") ItemWriter<AdministrativeUnitDTO> writer) {
+            @Qualifier("areaOfInterestGeoserverWriter") ItemWriter<AdministrativeUnitDTO> writer) {
         return buildWorkerStep(jobRepository, transactionManager, reader, processor, writer);
     }
 
-    @Bean(name = "ruralPropertyGeoserverPartitioner")
-    public Partitioner ruralPropertyGeoserverPartitioner(
+    @Bean(name = "areaOfInterestGeoserverPartitioner")
+    public Partitioner areaOfInterestGeoserverPartitioner(
             @Qualifier("sourceDataSource") DataSource sourceDataSource) {
         return buildPartitioner(sourceDataSource);
     }
 
-    @Bean(name = "ruralPropertyGeoserverReader")
+    @Bean(name = "areaOfInterestGeoserverReader")
     @StepScope
-    public AdministrativeUnitGeoserverReader ruralPropertyGeoserverReader(
+    public AdministrativeUnitGeoserverReader areaOfInterestGeoserverReader(
             @Qualifier("sourceDataSource") DataSource sourceDataSource,
             @Value("#{stepExecutionContext['minId']}") Long minId,
             @Value("#{stepExecutionContext['maxId']}") Long maxId) {
         return buildReader(sourceDataSource, minId, maxId);
     }
 
-    @Bean(name = "ruralPropertyGeoserverProcessor")
-    public ItemProcessor<AdministrativeUnitDTO, AdministrativeUnitDTO> ruralPropertyGeoserverProcessor() {
+    @Bean(name = "areaOfInterestGeoserverProcessor")
+    public ItemProcessor<AdministrativeUnitDTO, AdministrativeUnitDTO> areaOfInterestGeoserverProcessor() {
         return buildProcessor();
     }
 
-    @Bean(name = "ruralPropertyGeoserverWriter")
-    public ItemWriter<AdministrativeUnitDTO> ruralPropertyGeoserverWriter() {
+    @Bean(name = "areaOfInterestGeoserverWriter")
+    public ItemWriter<AdministrativeUnitDTO> areaOfInterestGeoserverWriter() {
         return buildWriter();
     }
 }

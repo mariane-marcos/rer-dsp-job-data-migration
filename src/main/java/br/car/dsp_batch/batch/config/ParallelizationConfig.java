@@ -53,9 +53,9 @@ public class ParallelizationConfig {
         return createTaskExecutor("adminUnitLevel3GeoserverJob");
     }
 
-    @Bean(name = "ruralPropertyGeoserverTaskExecutor")
-    public TaskExecutor ruralPropertyGeoserverTaskExecutor() {
-        return createTaskExecutor("ruralPropertyGeoserverJob");
+    @Bean(name = "areaOfInterestGeoserverTaskExecutor")
+    public TaskExecutor areaOfInterestGeoserverTaskExecutor() {
+        return createTaskExecutor("areaOfInterestGeoserverJob");
     }
 
     private TaskExecutor createTaskExecutor(String jobName) {

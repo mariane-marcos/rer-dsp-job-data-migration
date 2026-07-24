@@ -112,6 +112,7 @@ batch:
     primary-key: id
     geometry-column: geometry
     where-clause: "1=1"
+  area-of-interest:
     comparison-columns:
       - created_date
     persist-columns:
@@ -143,7 +144,7 @@ parallelization:
       chunk-size: 470
       page-size: 1000
       queue-capacity: 100
-    ruralPropertyGeoserverJob:
+    areaOfInterestGeoserverJob:
       enabled: true
       thread-pool-size: 1
       chunk-size: 100
@@ -154,7 +155,7 @@ execution-jobs:
   admin-unit-level-1-geoserver-job: true
   admin-unit-level-2-geoserver-job: true
   admin-unit-level-3-geoserver-job: true
-  rural-property-geoserver-job: true
+  area-of-interest-geoserver-job: true
 
 logging:
   level:

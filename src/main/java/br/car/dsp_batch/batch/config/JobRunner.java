@@ -21,7 +21,7 @@ public class JobRunner implements CommandLineRunner {
     private final Job adminUnitLevel1GeoserverJob;
     private final Job adminUnitLevel2GeoserverJob;
     private final Job adminUnitLevel3GeoserverJob;
-    private final Job ruralPropertyGeoserverJob;
+    private final Job areaOfInterestGeoserverJob;
 
     @Value("${execution-jobs.admin-unit-level-1-geoserver-job:true}")
     private boolean runLevel1;
@@ -32,20 +32,20 @@ public class JobRunner implements CommandLineRunner {
     @Value("${execution-jobs.admin-unit-level-3-geoserver-job:false}")
     private boolean runLevel3;
 
-    @Value("${execution-jobs.rural-property-geoserver-job:false}")
-    private boolean runRuralProperty;
+    @Value("${execution-jobs.area-of-interest-geoserver-job:false}")
+    private boolean runAreaOfInterest;
 
     public JobRunner(
             JobLauncher jobLauncher,
             @Qualifier("adminUnitLevel1GeoserverJob") Job adminUnitLevel1GeoserverJob,
             @Qualifier("adminUnitLevel2GeoserverJob") Job adminUnitLevel2GeoserverJob,
             @Qualifier("adminUnitLevel3GeoserverJob") Job adminUnitLevel3GeoserverJob,
-            @Qualifier("ruralPropertyGeoserverJob") Job ruralPropertyGeoserverJob) {
+            @Qualifier("areaOfInterestGeoserverJob") Job areaOfInterestGeoserverJob) {
         this.jobLauncher = jobLauncher;
         this.adminUnitLevel1GeoserverJob = adminUnitLevel1GeoserverJob;
         this.adminUnitLevel2GeoserverJob = adminUnitLevel2GeoserverJob;
         this.adminUnitLevel3GeoserverJob = adminUnitLevel3GeoserverJob;
-        this.ruralPropertyGeoserverJob = ruralPropertyGeoserverJob;
+        this.areaOfInterestGeoserverJob = areaOfInterestGeoserverJob;
     }
 
     @Override
@@ -55,12 +55,12 @@ public class JobRunner implements CommandLineRunner {
                 adminUnitLevel1GeoserverJob.getName(), enabledLabel(runLevel1),
                 adminUnitLevel2GeoserverJob.getName(), enabledLabel(runLevel2),
                 adminUnitLevel3GeoserverJob.getName(), enabledLabel(runLevel3),
-                ruralPropertyGeoserverJob.getName(), enabledLabel(runRuralProperty)
+                areaOfInterestGeoserverJob.getName(), enabledLabel(runAreaOfInterest)
         );
         runJobIfEnabled(runLevel1, adminUnitLevel1GeoserverJob);
         runJobIfEnabled(runLevel2, adminUnitLevel2GeoserverJob);
         runJobIfEnabled(runLevel3, adminUnitLevel3GeoserverJob);
-        runJobIfEnabled(runRuralProperty, ruralPropertyGeoserverJob);
+        runJobIfEnabled(runAreaOfInterest, areaOfInterestGeoserverJob);
     }
 
     private void runJobIfEnabled(boolean enabled, Job job) throws Exception {
