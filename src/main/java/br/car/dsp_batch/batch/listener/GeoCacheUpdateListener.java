@@ -10,8 +10,12 @@ import java.util.List;
 
 /**
  * Handles post-job cache refresh based on affected bounding boxes collected
- * during change detection. Integration with an external cache service can be
- * plugged in later without changing the job flow.
+ * during change detection.
+ *
+ * TODO: Implement real GeoServer Exhibition cache invalidation (e.g. GWC truncate
+ * by layer name + affected bboxes) using {@code layerName} from the job execution
+ * context. Integration with an external cache service can be plugged in later
+ * without changing the job flow. Today this listener only logs the request.
  */
 @Slf4j
 @Component
@@ -53,5 +57,6 @@ public class GeoCacheUpdateListener implements JobExecutionListener {
         for (String bbox : bboxes) {
             log.debug("Cache update bbox: {}", bbox);
         }
+        // TODO: Call GeoServer Exhibition (GWC / seed truncate) for layerName + bboxes.
     }
 }

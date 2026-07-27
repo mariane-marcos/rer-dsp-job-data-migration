@@ -37,6 +37,8 @@ public class BatchDataSourceConfig {
         config.setUsername(properties.getUsername());
         config.setPassword(properties.getPassword());
         config.setDriverClassName(properties.getDriverClassName());
+        // Allow pool startup even if the DB is down; unified connectivity check fails later.
+        config.setInitializationFailTimeout(-1);
         return config;
     }
 
