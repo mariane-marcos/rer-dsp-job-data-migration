@@ -1,7 +1,7 @@
--- Executar como superusuário (ex.: postgres).
+-- Run as a superuser (e.g. postgres).
 -- Ex.: psql -h localhost -p 5432 -U postgres -f 01_create_database.sql
 --
--- Se o banco já existir, ignore o erro de CREATE DATABASE e siga para o passo 02.
+-- If the database already exists, ignore the CREATE DATABASE error and continue to step 02.
 
 DO $$
 BEGIN

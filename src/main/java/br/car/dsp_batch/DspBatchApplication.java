@@ -8,9 +8,9 @@ import org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration;
 public class DspBatchApplication {
 
 	/**
-	 * Encerra a JVM após o JobRunner — necessário para o container one-shot
-	 * do core (docker compose run) não ficar "travado" e o start.sh seguir
-	 * para backend/frontend.
+	 * Exits the JVM after JobRunner — required so the core one-shot
+	 * container (docker compose run) does not stay "stuck" and start.sh can
+	 * continue to backend/frontend.
 	 */
 	public static void main(String[] args) {
 		System.exit(SpringApplication.exit(SpringApplication.run(DspBatchApplication.class, args)));

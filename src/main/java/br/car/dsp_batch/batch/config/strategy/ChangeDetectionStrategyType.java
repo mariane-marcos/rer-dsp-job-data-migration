@@ -1,11 +1,11 @@
 package br.car.dsp_batch.batch.config.strategy;
 
 /**
- * Estratégias disponíveis de detecção de alterações.
- * Novas estratégias podem ser adicionadas sem alterar a configuração principal do batch.
+ * Available change-detection strategies.
+ * New strategies can be added without changing the main batch configuration.
  */
 public enum ChangeDetectionStrategyType {
     DEFAULT,
-    /** Filtra colunas de comparação no intervalo {@code startDate}–{@code endDate}. */
+    /** Filters comparison columns within the {@code startDate}–{@code endDate} range. */
     DATE_RANGE
 }
