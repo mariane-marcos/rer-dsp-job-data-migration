@@ -85,17 +85,20 @@ public abstract class AdministrativeUnitGeoserverConfig {
     protected Step buildChangeDetectionStep(JobRepository jobRepository,
                                             PlatformTransactionManager transactionManager,
                                             DataSource sourceDataSource,
-                                            DataSource targetDataSource) {
+                                            DataSource targetDataSource,
+                                            DataSource geoTargetDataSource) {
         JobTableConfig tableConfig = tableConfig();
         ChangeDetectionStrategy strategy =
                 strategyResolver.resolve(tableConfig.getChangeDetectionStrategy());
 
         JdbcTemplate sourceJdbc = new JdbcTemplate(sourceDataSource);
         JdbcTemplate targetJdbc = new JdbcTemplate(targetDataSource);
+        JdbcTemplate geoTargetJdbc = new JdbcTemplate(geoTargetDataSource);
 
         String stepName = namePrefix() + "ChangeDetectionStep";
         return new StepBuilder(stepName, jobRepository)
-                .tasklet(new ChangeDetectionTasklet(sourceJdbc, targetJdbc, tableConfig, strategy),
+                .tasklet(new ChangeDetectionTasklet(
+                                sourceJdbc, targetJdbc, geoTargetJdbc, tableConfig, strategy),
                         transactionManager)
                 .build();
     }

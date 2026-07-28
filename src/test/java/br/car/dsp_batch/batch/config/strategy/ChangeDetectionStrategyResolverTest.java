@@ -81,8 +81,13 @@ class ChangeDetectionStrategyResolverTest {
         tableConfig.setComparisonColumns(List.of("name"));
         tableConfig.setPersistColumns(List.of("id", "name"));
         tableConfig.setLayerName("unit");
+        tableConfig.setSrid(4326);
 
-        strategy.detectChanges(sourceJdbc, targetJdbc, tableConfig, chunkContext);
+        JdbcTemplate geoTargetJdbc = mock(JdbcTemplate.class);
+        when(geoTargetJdbc.query(anyString(), any(ResultSetExtractor.class)))
+                .thenReturn(Collections.emptyMap());
+
+        strategy.detectChanges(sourceJdbc, targetJdbc, geoTargetJdbc, tableConfig, chunkContext);
 
         assertEquals(false, executionContext.get(DefaultChangeDetectionStrategy.CTX_HAS_CHANGES));
     }
@@ -92,6 +97,7 @@ class ChangeDetectionStrategyResolverTest {
         DateRangeChangeDetectionStrategy strategy = new DateRangeChangeDetectionStrategy();
         JdbcTemplate sourceJdbc = mock(JdbcTemplate.class);
         JdbcTemplate targetJdbc = mock(JdbcTemplate.class);
+        JdbcTemplate geoTargetJdbc = mock(JdbcTemplate.class);
         ChunkContext chunkContext = mock(ChunkContext.class);
         StepContext stepContext = mock(StepContext.class);
         StepExecution stepExecution = mock(StepExecution.class);
@@ -115,10 +121,11 @@ class ChangeDetectionStrategyResolverTest {
         tableConfig.setComparisonColumns(List.of("created_date"));
         tableConfig.setPersistColumns(List.of("id", "property_name"));
         tableConfig.setLayerName("property");
+        tableConfig.setSrid(4674);
         tableConfig.setStartDate(java.time.LocalDate.of(2024, 1, 1));
         tableConfig.setEndDate(java.time.LocalDate.of(2024, 12, 31));
 
-        strategy.detectChanges(sourceJdbc, targetJdbc, tableConfig, chunkContext);
+        strategy.detectChanges(sourceJdbc, targetJdbc, geoTargetJdbc, tableConfig, chunkContext);
 
         assertEquals(false, executionContext.get(DefaultChangeDetectionStrategy.CTX_HAS_CHANGES));
     }

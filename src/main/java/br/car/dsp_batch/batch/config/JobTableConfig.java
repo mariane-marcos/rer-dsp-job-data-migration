@@ -56,10 +56,11 @@ public interface JobTableConfig {
         return Collections.emptyMap();
     }
 
-    /** Geometry SRID (default: SIRGAS 2000). */
-    default int getSrid() {
-        return 4674;
-    }
+    /**
+     * Geometry SRID configured per job in YAML (required; must be a positive integer).
+     * No application-wide default — each adopter sets the value for their coordinate system.
+     */
+    int getSrid();
 
     /** Change detection strategy to use for this job. */
     default ChangeDetectionStrategyType getChangeDetectionStrategy() {

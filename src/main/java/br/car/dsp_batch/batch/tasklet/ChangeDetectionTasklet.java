@@ -17,15 +17,18 @@ public class ChangeDetectionTasklet implements Tasklet {
 
     private final JdbcTemplate sourceJdbc;
     private final JdbcTemplate targetJdbc;
+    private final JdbcTemplate geoTargetJdbc;
     private final JobTableConfig tableConfig;
     private final ChangeDetectionStrategy strategy;
 
     public ChangeDetectionTasklet(JdbcTemplate sourceJdbc,
                                   JdbcTemplate targetJdbc,
+                                  JdbcTemplate geoTargetJdbc,
                                   JobTableConfig tableConfig,
                                   ChangeDetectionStrategy strategy) {
         this.sourceJdbc = sourceJdbc;
         this.targetJdbc = targetJdbc;
+        this.geoTargetJdbc = geoTargetJdbc;
         this.tableConfig = tableConfig;
         this.strategy = strategy;
     }
@@ -34,7 +37,7 @@ public class ChangeDetectionTasklet implements Tasklet {
     public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) {
         log.info("Executing change detection with strategy={} for table={}",
                 strategy.getType(), tableConfig.getSourceTable());
-        strategy.detectChanges(sourceJdbc, targetJdbc, tableConfig, chunkContext);
+        strategy.detectChanges(sourceJdbc, targetJdbc, geoTargetJdbc, tableConfig, chunkContext);
         return RepeatStatus.FINISHED;
     }
 }

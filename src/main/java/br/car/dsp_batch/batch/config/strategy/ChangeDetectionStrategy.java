@@ -14,9 +14,16 @@ public interface ChangeDetectionStrategy {
     /**
      * Detects changes and writes results into the job execution context
      * ({@code hasChanges}, {@code affectedBboxes}, {@code layerName}).
+     *
+     * @param sourceJdbc    origin database
+     * @param targetJdbc    business target (dsp-db) — used for orphan deletes
+     * @param geoTargetJdbc exhibition target — geometry comparison source of truth
+     * @param tableConfig   table mapping
+     * @param chunkContext  Spring Batch chunk context
      */
     void detectChanges(JdbcTemplate sourceJdbc,
                        JdbcTemplate targetJdbc,
+                       JdbcTemplate geoTargetJdbc,
                        JobTableConfig tableConfig,
                        ChunkContext chunkContext);
 }

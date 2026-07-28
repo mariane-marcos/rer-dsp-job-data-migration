@@ -29,6 +29,7 @@ public class DateRangeChangeDetectionStrategy implements ChangeDetectionStrategy
     @Override
     public void detectChanges(JdbcTemplate sourceJdbc,
                               JdbcTemplate targetJdbc,
+                              JdbcTemplate geoTargetJdbc,
                               JobTableConfig tableConfig,
                               ChunkContext chunkContext) {
         LocalDate startDate = tableConfig.getStartDate();

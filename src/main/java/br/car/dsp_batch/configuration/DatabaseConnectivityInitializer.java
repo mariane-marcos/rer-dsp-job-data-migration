@@ -28,12 +28,13 @@ public class DatabaseConnectivityInitializer
     public void initialize(ConfigurableApplicationContext applicationContext) {
         Environment env = applicationContext.getEnvironment();
 
-        log.info("Checking connectivity to the 3 databases...");
+        log.info("Checking connectivity to the 4 databases...");
 
         List<CheckResult> results = List.of(
                 check("batch", env, "spring.datasource.batch"),
                 check("source", env, "spring.datasource.source"),
-                check("target", env, "spring.datasource.target")
+                check("target", env, "spring.datasource.target"),
+                check("geo-target", env, "spring.datasource.geo-target")
         );
 
         for (CheckResult result : results) {
@@ -58,7 +59,7 @@ public class DatabaseConnectivityInitializer
                             + ". See status above and fix the connection before running the job.");
         }
 
-        log.info("All 3 databases are operational.");
+        log.info("All 4 databases are operational.");
     }
 
     private CheckResult check(String name, Environment env, String prefix) {

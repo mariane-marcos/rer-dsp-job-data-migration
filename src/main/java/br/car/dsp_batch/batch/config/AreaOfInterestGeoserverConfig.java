@@ -76,8 +76,10 @@ public class AreaOfInterestGeoserverConfig extends AdministrativeUnitGeoserverCo
             JobRepository jobRepository,
             PlatformTransactionManager transactionManager,
             @Qualifier("sourceDataSource") DataSource sourceDataSource,
-            @Qualifier("targetDataSource") DataSource targetDataSource) {
-        return buildChangeDetectionStep(jobRepository, transactionManager, sourceDataSource, targetDataSource);
+            @Qualifier("targetDataSource") DataSource targetDataSource,
+            @Qualifier("geoTargetDataSource") DataSource geoTargetDataSource) {
+        return buildChangeDetectionStep(
+                jobRepository, transactionManager, sourceDataSource, targetDataSource, geoTargetDataSource);
     }
 
     @Bean(name = "areaOfInterestGeoserverMasterStep")

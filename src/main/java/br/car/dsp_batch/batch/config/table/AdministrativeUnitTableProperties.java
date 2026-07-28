@@ -27,7 +27,7 @@ public class AdministrativeUnitTableProperties implements JobTableConfig {
     private List<String> persistColumns = new ArrayList<>();
     private String layerName;
     private Map<String, String> columnMapping = new HashMap<>();
-    private int srid = 4674;
+    private int srid;
     private ChangeDetectionStrategyType changeDetectionStrategy = ChangeDetectionStrategyType.DEFAULT;
 
     @Override

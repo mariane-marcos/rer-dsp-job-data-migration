@@ -1,6 +1,7 @@
 package br.car.dsp_batch.batch.config.strategy;
 
 import br.car.dsp_batch.batch.config.JobTableConfig;
+import br.car.dsp_batch.service.AdministrativeUnitPersistenceService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -39,17 +40,22 @@ public class DefaultChangeDetectionStrategy implements ChangeDetectionStrategy {
     @Override
     public void detectChanges(JdbcTemplate sourceJdbc,
                               JdbcTemplate targetJdbc,
+                              JdbcTemplate geoTargetJdbc,
                               JobTableConfig tableConfig,
                               ChunkContext chunkContext) {
+        AdministrativeUnitPersistenceService.requirePositiveSrid(tableConfig);
         log.info("Starting change detection for table: {}", tableConfig.getSourceTable());
 
-        Map<Object, RecordComparison> target = fetchTargetData(targetJdbc, tableConfig);
-        log.info("Target: {} records", target.size());
+        // Geometry comparison uses exhibition DB (full geometry).
+        Map<Object, RecordComparison> geoTarget = fetchTargetData(geoTargetJdbc, tableConfig);
+        log.info("Geo-target: {} records", geoTarget.size());
 
-        List<String> bboxes = compareStreamingSource(sourceJdbc, tableConfig, target);
+        List<String> bboxes = compareStreamingSource(sourceJdbc, tableConfig, geoTarget);
 
-        if (!target.isEmpty()) {
-            deleteRemovedRecords(targetJdbc, tableConfig, target.keySet());
+        if (!geoTarget.isEmpty()) {
+            // Orphan deletes must run on both destinations.
+            deleteRemovedRecords(geoTargetJdbc, tableConfig, geoTarget.keySet());
+            deleteRemovedRecords(targetJdbc, tableConfig, geoTarget.keySet());
         }
 
         var jobContext = chunkContext.getStepContext()
