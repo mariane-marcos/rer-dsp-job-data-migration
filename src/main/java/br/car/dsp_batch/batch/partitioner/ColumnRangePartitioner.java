@@ -33,13 +33,13 @@ public class ColumnRangePartitioner implements Partitioner {
     public Map<String, ExecutionContext> partition(int gridSize) {
         if (!isNumericColumn()) {
             log.info(
-                    "Coluna '{}' em '{}' não é numérica (ou está vazia). "
-                            + "Criando uma única partição sem faixa minId/maxId.",
+                    "Column '{}' in '{}' is not numeric (or is empty). "
+                            + "Creating a single partition without minId/maxId range.",
                     column, table);
             return singlePartitionWithoutRange();
         }
 
-        // CAST garante MIN/MAX numérico mesmo se a coluna for varchar com dígitos (ex.: cd_uf).
+        // CAST ensures numeric MIN/MAX even if the column is varchar with digits (e.g. cd_uf).
         String numericColumn = "CAST(" + column + " AS BIGINT)";
         String minMaxSql = String.format("SELECT MIN(%s), MAX(%s) FROM %s", numericColumn, numericColumn, table);
         if (hasWhereClause()) {
@@ -100,8 +100,8 @@ public class ColumnRangePartitioner implements Partitioner {
     }
 
     /**
-     * Retorna true somente se todos os valores não nulos da coluna forem inteiros
-     * (permitindo varchar numérico como "11" ou "35").
+     * Returns true only if every non-null column value is an integer
+     * (allows numeric varchar values such as "11" or "35").
      */
     private boolean isNumericColumn() {
         String sql = String.format(

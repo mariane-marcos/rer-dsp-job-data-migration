@@ -1,8 +1,8 @@
--- Executar conectado em batch_metadata, preferencialmente como usuário batch.
+-- Run connected to batch_metadata, preferably as the batch user.
 -- Ex.: psql -h localhost -p 5432 -U batch -d batch_metadata -f 02_spring_batch_schema.sql
 --
--- Schema oficial Spring Batch 5.2.x (PostgreSQL).
--- Necessário porque spring.batch.jdbc.initialize-schema=never.
+-- Official Spring Batch 5.2.x schema (PostgreSQL).
+-- Required because spring.batch.jdbc.initialize-schema=never.
 
 CREATE TABLE BATCH_JOB_INSTANCE (
 	JOB_INSTANCE_ID BIGINT NOT NULL PRIMARY KEY,
