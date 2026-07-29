@@ -72,7 +72,7 @@ public class AdministrativeUnitPersistenceService {
     }
 
     private void upsertBusinessTarget(List<AdministrativeUnitDTO> items, JobTableConfig tableConfig) {
-        List<String> sourceColumns = tableConfig.getPersistColumns();
+        List<String> sourceColumns = tableConfig.getAllBusinessPersistColumns();
         List<String> targetColumns = sourceColumns.stream()
                 .map(tableConfig::resolveTargetColumn)
                 .collect(Collectors.toList());

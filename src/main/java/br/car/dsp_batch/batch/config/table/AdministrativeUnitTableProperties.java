@@ -25,6 +25,8 @@ public class AdministrativeUnitTableProperties implements JobTableConfig {
     private String whereClause = "1=1";
     private List<String> comparisonColumns = new ArrayList<>();
     private List<String> persistColumns = new ArrayList<>();
+    /** Persisted only on dsp-db (not exhibition), e.g. theme_1…theme_4. */
+    private List<String> businessOnlyPersistColumns = new ArrayList<>();
     private String layerName;
     private Map<String, String> columnMapping = new HashMap<>();
     private int srid;

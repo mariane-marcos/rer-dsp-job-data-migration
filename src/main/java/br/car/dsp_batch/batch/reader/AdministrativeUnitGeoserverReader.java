@@ -10,6 +10,7 @@ import org.springframework.jdbc.core.RowMapper;
 import javax.sql.DataSource;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,7 +37,7 @@ public class AdministrativeUnitGeoserverReader
     private PagingQueryProvider createQueryProvider(JobTableConfig tableConfig, boolean useIdRange) {
         String partitionColumn = tableConfig.getPartitionColumn();
         String geom = tableConfig.getGeometryColumn();
-        List<String> persistColumns = tableConfig.getPersistColumns();
+        List<String> persistColumns = new ArrayList<>(tableConfig.getAllBusinessPersistColumns());
 
         String selectColumns = String.join(", ", persistColumns);
 
@@ -92,7 +93,7 @@ public class AdministrativeUnitGeoserverReader
             dto.setId(rs.getObject(tableConfig.getPrimaryKey()));
             dto.setGeometryGeoJson(rs.getString("geometry_geo_json"));
 
-            for (String column : tableConfig.getPersistColumns()) {
+            for (String column : tableConfig.getAllBusinessPersistColumns()) {
                 dto.putAttribute(column, rs.getObject(column));
             }
 
