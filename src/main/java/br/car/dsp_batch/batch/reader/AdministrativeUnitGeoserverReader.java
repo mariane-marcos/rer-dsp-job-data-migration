@@ -58,19 +58,26 @@ public class AdministrativeUnitGeoserverReader
                 + " AND NOT ST_IsEmpty(ST_Multi(ST_CollectionExtract("
                 + "ST_MakeValid(COALESCE(" + geom + ", ST_Buffer(" + geom + ", 0))), 3)))";
 
+        // YAML where-clause (sample / adopter filters) must also apply on the write read.
+        String configWhere = tableConfig.getWhereClause();
+        boolean hasConfigWhere = configWhere != null
+                && !configWhere.isBlank()
+                && !"1=1".equals(configWhere.trim());
+
+        StringBuilder where = new StringBuilder("WHERE ").append(geometryFilter);
+        if (hasConfigWhere) {
+            where.append(" AND (").append(configWhere).append(")");
+        }
+
         if (useIdRange) {
             // CAST handles VARCHAR columns containing numeric values (e.g., cd_uf);
             // minId/maxId are Long values.
             String numericPartitionColumn = "CAST(" + partitionColumn + " AS BIGINT)";
-            queryProvider.setWhereClause(
-                    "WHERE " + numericPartitionColumn + " >= :minId AND " + numericPartitionColumn + " <= :maxId"
-                            + " AND " + geometryFilter
-            );
-        } else {
-            // No range: alphanumeric PK/column, parallelization disabled,
-            // or a single partition.
-            queryProvider.setWhereClause("WHERE " + geometryFilter);
+            where.append(" AND ").append(numericPartitionColumn).append(" >= :minId")
+                    .append(" AND ").append(numericPartitionColumn).append(" <= :maxId");
         }
+
+        queryProvider.setWhereClause(where.toString());
 
         Map<String, Order> sortKeys = new HashMap<>();
         sortKeys.put(partitionColumn, Order.ASCENDING);

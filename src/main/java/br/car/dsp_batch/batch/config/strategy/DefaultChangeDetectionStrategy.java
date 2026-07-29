@@ -82,7 +82,17 @@ public class DefaultChangeDetectionStrategy implements ChangeDetectionStrategy {
         String geom = tableConfig.getGeometryColumn();
         String table = tableConfig.getSourceTable();
         String where = tableConfig.getWhereClause();
-        String columns = String.join(", ", tableConfig.getComparisonColumns());
+
+        // Same columns as geo-target hash (exclude business-only measures).
+        Set<String> businessOnlySourceColumns = Set.copyOf(
+                tableConfig.getBusinessOnlyPersistColumns() != null
+                        ? tableConfig.getBusinessOnlyPersistColumns()
+                        : List.of()
+        );
+        List<String> comparisonColumns = tableConfig.getComparisonColumns().stream()
+                .filter(col -> !businessOnlySourceColumns.contains(col))
+                .collect(Collectors.toList());
+        String columns = String.join(", ", comparisonColumns);
 
         String sql = buildComparisonSql(tableConfig, pk, columns, geom, table, "WHERE " + where);
 
@@ -94,7 +104,7 @@ public class DefaultChangeDetectionStrategy implements ChangeDetectionStrategy {
             sourceCount.incrementAndGet();
 
             Object id = normalizeId(rs.getObject(pk));
-            String hash = calculateHashWithGeometry(rs, tableConfig.getComparisonColumns());
+            String hash = calculateHashWithGeometry(rs, comparisonColumns);
             String bbox = formatBbox(rs.getDouble("minx"), rs.getDouble("miny"),
                     rs.getDouble("maxx"), rs.getDouble("maxy"));
 
@@ -137,8 +147,14 @@ public class DefaultChangeDetectionStrategy implements ChangeDetectionStrategy {
         String geom = tableConfig.resolveTargetColumn(tableConfig.getGeometryColumn());
         String table = tableConfig.getTargetTable();
 
+        // Geo-target has no business-only columns (e.g. theme_1..theme_4 on dsp-db only).
+        Set<String> businessOnlyTargetColumns = tableConfig.getBusinessOnlyPersistColumns().stream()
+                .map(tableConfig::resolveTargetColumn)
+                .collect(Collectors.toSet());
+
         List<String> targetColumns = tableConfig.getComparisonColumns().stream()
                 .map(tableConfig::resolveTargetColumn)
+                .filter(col -> !businessOnlyTargetColumns.contains(col))
                 .collect(Collectors.toList());
         String columns = String.join(", ", targetColumns);
 
