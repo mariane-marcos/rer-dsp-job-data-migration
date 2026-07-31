@@ -47,10 +47,13 @@ public class AdministrativeUnitGeoserverReader
             selectColumns = selectColumns + ", " + partitionColumn;
         }
 
+        int srid = tableConfig.getSrid();
+
         PostgresPagingQueryProvider queryProvider = new PostgresPagingQueryProvider();
         queryProvider.setSelectClause(
                 "SELECT " + selectColumns
-                        + ", public.ST_AsGeoJSON(" + geom + ")::text AS geometry_geo_json"
+                        + ", public.ST_AsGeoJSON(public.ST_Transform(" + geom + ", " + srid + "))::text"
+                        + " AS geometry_geo_json"
         );
         queryProvider.setFromClause("FROM " + tableConfig.getSourceTable());
 
