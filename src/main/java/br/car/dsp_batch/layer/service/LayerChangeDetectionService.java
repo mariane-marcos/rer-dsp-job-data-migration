@@ -1,18 +1,18 @@
-package br.car.dsp_batch.batch.config.strategy;
+package br.car.dsp_batch.layer.service;
 
-import br.car.dsp_batch.batch.config.JobTableConfig;
 import br.car.dsp_batch.geometry.GeometrySql;
-import br.car.dsp_batch.service.AdministrativeUnitPersistenceService;
+import br.car.dsp_batch.layer.metadata.LayerTableMetadata;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -21,42 +21,34 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 /**
- * DEFAULT change detection strategy.
- * Compares source and target records by attribute hash and geometry metrics,
- * collects affected bounding boxes, and deletes target orphans.
+ * Change detection between source and geo-target for geographic layers.
+ * Deletes orphans on the geo-target only.
  */
 @Slf4j
-@Component
-public class DefaultChangeDetectionStrategy implements ChangeDetectionStrategy {
+@Service
+public class LayerChangeDetectionService {
+
+    /** Stable alias for 2D geometry in comparison subqueries (independent of source column name). */
+    static final String LAYER_GEOM_2D_ALIAS = "layer_geom_2d";
 
     public static final String CTX_HAS_CHANGES = "hasChanges";
     public static final String CTX_AFFECTED_BBOXES = "affectedBboxes";
     public static final String CTX_LAYER_NAME = "layerName";
 
-    @Override
-    public ChangeDetectionStrategyType getType() {
-        return ChangeDetectionStrategyType.DEFAULT;
-    }
-
-    @Override
     public void detectChanges(JdbcTemplate sourceJdbc,
-                              JdbcTemplate targetJdbc,
                               JdbcTemplate geoTargetJdbc,
-                              JobTableConfig tableConfig,
+                              LayerTableMetadata metadata,
                               ChunkContext chunkContext) {
-        AdministrativeUnitPersistenceService.requirePositiveSrid(tableConfig);
-        log.info("Starting change detection for table: {}", tableConfig.getSourceTable());
+        LayerFeaturePersistenceService.requirePositiveSrid(metadata);
+        log.info("Starting change detection for table: {}", metadata.qualifiedSourceTable());
 
-        // Geometry comparison uses exhibition DB (full geometry).
-        Map<Object, RecordComparison> geoTarget = fetchTargetData(geoTargetJdbc, tableConfig);
+        Map<Object, RecordComparison> geoTarget = fetchTargetData(geoTargetJdbc, metadata);
         log.info("Geo-target: {} records", geoTarget.size());
 
-        List<String> bboxes = compareStreamingSource(sourceJdbc, tableConfig, geoTarget);
+        List<String> bboxes = compareStreamingSource(sourceJdbc, metadata, geoTarget);
 
         if (!geoTarget.isEmpty()) {
-            // Orphan deletes must run on both destinations.
-            deleteRemovedRecords(geoTargetJdbc, tableConfig, geoTarget.keySet());
-            deleteRemovedRecords(targetJdbc, tableConfig, geoTarget.keySet());
+            deleteRemovedRecords(geoTargetJdbc, metadata, geoTarget.keySet());
         }
 
         var jobContext = chunkContext.getStepContext()
@@ -65,37 +57,28 @@ public class DefaultChangeDetectionStrategy implements ChangeDetectionStrategy {
                 .getExecutionContext();
 
         if (bboxes.isEmpty()) {
-            log.info("No changes detected in {}", tableConfig.getSourceTable());
+            log.info("No changes detected in {}", metadata.qualifiedSourceTable());
             jobContext.put(CTX_HAS_CHANGES, false);
         } else {
             log.info("Detected {} areas with changes in {}",
-                    bboxes.size(), tableConfig.getSourceTable());
+                    bboxes.size(), metadata.qualifiedSourceTable());
             jobContext.put(CTX_HAS_CHANGES, true);
             jobContext.put(CTX_AFFECTED_BBOXES, bboxes);
-            jobContext.put(CTX_LAYER_NAME, tableConfig.getLayerName());
+            jobContext.put(CTX_LAYER_NAME, metadata.layerName());
         }
     }
 
     private List<String> compareStreamingSource(JdbcTemplate sourceJdbc,
-                                                JobTableConfig tableConfig,
+                                                LayerTableMetadata metadata,
                                                 Map<Object, RecordComparison> target) {
-        String pk = tableConfig.getPrimaryKey();
-        String geom = tableConfig.getGeometryColumn();
-        String table = tableConfig.getSourceTable();
-        String where = tableConfig.getWhereClause();
+        String pk = metadata.primaryKeyColumn();
+        String geom = metadata.geometryColumn();
+        String table = metadata.qualifiedSourceTable();
+        String where = metadata.whereClause();
+        List<String> comparisonColumns = metadata.sourceComparisonColumnNames();
+        String attributeColumns = joinAttributeSelectColumns(pk, comparisonColumns);
 
-        // Same columns as geo-target hash (exclude business-only measures).
-        Set<String> businessOnlySourceColumns = Set.copyOf(
-                tableConfig.getBusinessOnlyPersistColumns() != null
-                        ? tableConfig.getBusinessOnlyPersistColumns()
-                        : List.of()
-        );
-        List<String> comparisonColumns = tableConfig.getComparisonColumns().stream()
-                .filter(col -> !businessOnlySourceColumns.contains(col))
-                .collect(Collectors.toList());
-        String columns = String.join(", ", comparisonColumns);
-
-        String sql = buildComparisonSql(tableConfig, pk, columns, geom, table, "WHERE " + where);
+        String sql = buildComparisonSql(metadata, attributeColumns, geom, table, "WHERE " + where);
 
         List<String> bboxes = new ArrayList<>();
         List<String> modified = new ArrayList<>();
@@ -115,7 +98,8 @@ public class DefaultChangeDetectionStrategy implements ChangeDetectionStrategy {
                 log.debug("New record: {}", id);
                 bboxes.add(bbox);
             } else if (!hash.equals(targetRec.hash)) {
-                modified.add(String.format("id=%s | SOURCE: %s | TARGET: %s", id, hash, targetRec.hash));
+                modified.add(String.format("id=%s | SOURCE: %s | TARGET: %s",
+                        id, hash, targetRec.hash));
                 bboxes.add(mergeBbox(bbox, targetRec.bbox));
             }
 
@@ -143,23 +127,14 @@ public class DefaultChangeDetectionStrategy implements ChangeDetectionStrategy {
     }
 
     private Map<Object, RecordComparison> fetchTargetData(JdbcTemplate targetJdbc,
-                                                          JobTableConfig tableConfig) {
-        String pk = tableConfig.resolveTargetColumn(tableConfig.getPrimaryKey());
-        String geom = tableConfig.resolveTargetColumn(tableConfig.getGeometryColumn());
-        String table = tableConfig.getTargetTable();
+                                                          LayerTableMetadata metadata) {
+        String pk = metadata.resolveTargetPrimaryKeyColumn();
+        String geom = metadata.geometryColumn();
+        String table = metadata.qualifiedTargetTable();
+        List<String> targetColumns = metadata.targetComparisonColumnNames();
+        String attributeColumns = joinAttributeSelectColumns(pk, targetColumns);
 
-        // Geo-target has no business-only columns (e.g. theme_1..theme_4 on dsp-db only).
-        Set<String> businessOnlyTargetColumns = tableConfig.getBusinessOnlyPersistColumns().stream()
-                .map(tableConfig::resolveTargetColumn)
-                .collect(Collectors.toSet());
-
-        List<String> targetColumns = tableConfig.getComparisonColumns().stream()
-                .map(tableConfig::resolveTargetColumn)
-                .filter(col -> !businessOnlyTargetColumns.contains(col))
-                .collect(Collectors.toList());
-        String columns = String.join(", ", targetColumns);
-
-        String sql = buildComparisonSql(tableConfig, pk, columns, geom, table, "");
+        String sql = buildComparisonSql(metadata, attributeColumns, geom, table, "");
 
         return targetJdbc.query(sql, rs -> {
             Map<Object, RecordComparison> map = new HashMap<>();
@@ -174,21 +149,34 @@ public class DefaultChangeDetectionStrategy implements ChangeDetectionStrategy {
         });
     }
 
-    private String buildComparisonSql(JobTableConfig tableConfig,
-                                      String pk,
-                                      String columns,
-                                      String geom,
-                                      String table,
-                                      String whereClause) {
-        int srid = tableConfig.getSrid();
+    String joinAttributeSelectColumns(String primaryKey, List<String> columnNames) {
+        LinkedHashSet<String> unique = new LinkedHashSet<>();
+        unique.add(primaryKey);
+        for (String column : columnNames) {
+            if (!column.equals(primaryKey)) {
+                unique.add(column);
+            }
+        }
+        return String.join(", ", unique);
+    }
+
+    String buildComparisonSql(LayerTableMetadata metadata,
+                              String attributeColumns,
+                              String geom,
+                              String table,
+                              String whereClause) {
+        int srid = metadata.srid();
 
         String validGeomFilter = GeometrySql.validNonEmptyPredicate(geom);
         String finalWhere = whereClause.isEmpty()
                 ? "WHERE " + validGeomFilter
                 : whereClause + " AND " + validGeomFilter;
 
+        // Metrics / envelope in 2D so Point Z (etc.) matches geo-target exhibition columns.
+        String geom2d = GeometrySql.force2d(geom);
+
         return String.format(
-                "SELECT %s, %s, "
+                "SELECT %s, "
                         + "ST_XMin(env3857) as minx, "
                         + "ST_YMin(env3857) as miny, "
                         + "ST_XMax(env3857) as maxx, "
@@ -197,11 +185,21 @@ public class DefaultChangeDetectionStrategy implements ChangeDetectionStrategy {
                         + "ROUND(ST_X(ST_Centroid(%s))::numeric, 5) as centroid_x, "
                         + "ROUND(ST_Y(ST_Centroid(%s))::numeric, 5) as centroid_y "
                         + "FROM ("
-                        + "  SELECT %s, %s, %s, "
+                        + "  SELECT %s, %s AS %s, "
                         + "  ST_Transform(ST_Envelope(ST_SetSRID(%s, %d)), 3857) as env3857 "
                         + "  FROM %s %s"
                         + ") t",
-                pk, columns, geom, geom, geom, pk, columns, geom, geom, srid, table, finalWhere
+                attributeColumns,
+                LAYER_GEOM_2D_ALIAS,
+                LAYER_GEOM_2D_ALIAS,
+                LAYER_GEOM_2D_ALIAS,
+                attributeColumns,
+                geom2d,
+                LAYER_GEOM_2D_ALIAS,
+                geom2d,
+                srid,
+                table,
+                finalWhere
         );
     }
 
@@ -238,14 +236,14 @@ public class DefaultChangeDetectionStrategy implements ChangeDetectionStrategy {
     }
 
     private void deleteRemovedRecords(JdbcTemplate targetJdbc,
-                                      JobTableConfig tableConfig,
+                                      LayerTableMetadata metadata,
                                       Set<Object> idsToDelete) {
         if (idsToDelete.isEmpty()) {
             return;
         }
 
-        String pk = tableConfig.resolveTargetColumn(tableConfig.getPrimaryKey());
-        String table = tableConfig.getTargetTable();
+        String pk = metadata.resolveTargetPrimaryKeyColumn();
+        String table = metadata.qualifiedTargetTable();
 
         String placeholders = idsToDelete.stream().map(id -> "?").collect(Collectors.joining(","));
         String sql = String.format("DELETE FROM %s WHERE %s IN (%s)", table, pk, placeholders);
@@ -254,15 +252,12 @@ public class DefaultChangeDetectionStrategy implements ChangeDetectionStrategy {
         log.warn("Deleted {} inactive records from target: {}", deleted, idsToDelete);
     }
 
-    /**
-     * Normalizes PK values so source numeric IDs match target varchar IDs (e.g. 1L vs "1").
-     */
     Object normalizeId(Object id) {
         if (id == null) {
             return null;
         }
-        if (id instanceof Number) {
-            return String.valueOf(((Number) id).longValue());
+        if (id instanceof Number number) {
+            return String.valueOf(number.longValue());
         }
         return id.toString().trim();
     }

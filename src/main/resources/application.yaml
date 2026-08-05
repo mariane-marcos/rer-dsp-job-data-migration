@@ -132,6 +132,12 @@ batch:
     change-detection-strategy: DATE_RANGE
     start-date: 2024-01-01
     end-date: 2024-12-31
+  # Camadas: o job cria dsp.<tabela> no geo-target automaticamente.
+  # A coluna de vinculo vira area_of_interest_id no destino.
+  # Para cada tabela de camada que for necessário migrar, adicionar aqui.
+  layers:
+    - source-table: conservation.rivers
+      area-of-interest-id-column: conservation_unit_id
 
 parallelization:
   jobs:
@@ -165,6 +171,7 @@ execution-jobs:
   admin-unit-level-2-geoserver-job: true
   admin-unit-level-3-geoserver-job: true
   area-of-interest-geoserver-job: true
+  layer-jobs: true
 
 logging:
   level:

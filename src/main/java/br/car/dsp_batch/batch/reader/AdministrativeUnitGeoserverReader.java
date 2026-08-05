@@ -2,6 +2,7 @@ package br.car.dsp_batch.batch.reader;
 
 import br.car.dsp_batch.batch.config.JobTableConfig;
 import br.car.dsp_batch.batch.dto.AdministrativeUnitDTO;
+import br.car.dsp_batch.geometry.GeometrySql;
 import org.springframework.batch.item.database.Order;
 import org.springframework.batch.item.database.PagingQueryProvider;
 import org.springframework.batch.item.database.support.PostgresPagingQueryProvider;
@@ -48,18 +49,17 @@ public class AdministrativeUnitGeoserverReader
         }
 
         int srid = tableConfig.getSrid();
+        String transformedGeom = "public.ST_Transform(" + geom + ", " + srid + ")";
 
         PostgresPagingQueryProvider queryProvider = new PostgresPagingQueryProvider();
         queryProvider.setSelectClause(
                 "SELECT " + selectColumns
-                        + ", public.ST_AsGeoJSON(public.ST_Transform(" + geom + ", " + srid + "))::text"
+                        + ", " + GeometrySql.asGeoJsonText2d(transformedGeom)
                         + " AS geometry_geo_json"
         );
         queryProvider.setFromClause("FROM " + tableConfig.getSourceTable());
 
-        String geometryFilter = geom + " IS NOT NULL"
-                + " AND NOT ST_IsEmpty(ST_Multi(ST_CollectionExtract("
-                + "ST_MakeValid(COALESCE(" + geom + ", ST_Buffer(" + geom + ", 0))), 3)))";
+        String geometryFilter = GeometrySql.validNonEmptyPredicate(geom);
 
         // YAML where-clause (sample / adopter filters) must also apply on the write read.
         String configWhere = tableConfig.getWhereClause();

@@ -1,6 +1,7 @@
 package br.car.dsp_batch.batch.config.strategy;
 
 import br.car.dsp_batch.batch.config.JobTableConfig;
+import br.car.dsp_batch.geometry.GeometrySql;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -113,11 +114,7 @@ public class DateRangeChangeDetectionStrategy implements ChangeDetectionStrategy
                 ? dateFilters
                 : whereClause + " AND " + dateFilters;
 
-        String validGeomFilter = String.format(
-                "(%s IS NOT NULL"
-                        + " AND NOT ST_IsEmpty(ST_Multi(ST_CollectionExtract(ST_MakeValid(COALESCE(%s, ST_Buffer(%s, 0))), 3))))",
-                geom, geom, geom
-        );
+        String validGeomFilter = GeometrySql.validNonEmptyPredicate(geom);
 
         String finalWhere = "WHERE " + baseWhere + " AND " + validGeomFilter;
 

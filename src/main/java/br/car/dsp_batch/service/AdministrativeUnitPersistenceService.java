@@ -2,6 +2,7 @@ package br.car.dsp_batch.service;
 
 import br.car.dsp_batch.batch.config.JobTableConfig;
 import br.car.dsp_batch.batch.dto.AdministrativeUnitDTO;
+import br.car.dsp_batch.geometry.GeometrySql;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataAccessException;
@@ -85,10 +86,7 @@ public class AdministrativeUnitPersistenceService {
         String placeholders = sourceColumns.stream()
                 .map(c -> "?")
                 .collect(Collectors.joining(", "));
-        String geomExpr = String.format(
-                "public.ST_SetSRID(public.ST_GeomFromGeoJSON(?), %d)",
-                srid
-        );
+        String geomExpr = GeometrySql.geomFromGeoJsonParam2d(srid);
         String boundaryPlaceholder = "public.ST_Envelope(" + geomExpr + ")";
         String centroidPlaceholder = "public.ST_Centroid(" + geomExpr + ")";
 
@@ -143,10 +141,7 @@ public class AdministrativeUnitPersistenceService {
         String placeholders = sourceColumns.stream()
                 .map(c -> "?")
                 .collect(Collectors.joining(", "));
-        String geometryPlaceholder = String.format(
-                "public.ST_SetSRID(public.ST_GeomFromGeoJSON(?), %d)",
-                srid
-        );
+        String geometryPlaceholder = GeometrySql.geomFromGeoJsonParam2d(srid);
 
         String updateSet = targetColumns.stream()
                 .filter(col -> !col.equals(targetPk))

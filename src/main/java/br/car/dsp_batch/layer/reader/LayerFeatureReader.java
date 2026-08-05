@@ -1,0 +1,103 @@
+package br.car.dsp_batch.layer.reader;
+
+import br.car.dsp_batch.batch.reader.AbstractPartitionedPagingItemReader;
+import br.car.dsp_batch.geometry.GeometrySql;
+import br.car.dsp_batch.layer.dto.LayerFeatureRecord;
+import br.car.dsp_batch.layer.metadata.LayerTableMetadata;
+import org.springframework.batch.item.database.Order;
+import org.springframework.batch.item.database.PagingQueryProvider;
+import org.springframework.batch.item.database.support.PostgresPagingQueryProvider;
+import org.springframework.jdbc.core.RowMapper;
+
+import javax.sql.DataSource;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Generic paging reader for layer features (feições).
+ */
+public class LayerFeatureReader extends AbstractPartitionedPagingItemReader<LayerFeatureRecord> {
+
+    public LayerFeatureReader(DataSource dataSource,
+                              Long minId,
+                              Long maxId,
+                              int pageSize,
+                              LayerTableMetadata metadata,
+                              String readerName) {
+        super(dataSource, minId, maxId, pageSize);
+        this.setName(readerName);
+        boolean useIdRange = minId != null && maxId != null;
+        this.setQueryProvider(createQueryProvider(metadata, useIdRange));
+        this.setRowMapper(new LayerFeatureRowMapper(metadata));
+    }
+
+    private PagingQueryProvider createQueryProvider(LayerTableMetadata metadata, boolean useIdRange) {
+        String partitionColumn = metadata.primaryKeyColumn();
+        String geom = metadata.geometryColumn();
+        List<String> persistColumns = new ArrayList<>(metadata.sourceNonGeometryColumnNames());
+
+        String selectColumns = String.join(", ", persistColumns);
+        if (!persistColumns.contains(partitionColumn)) {
+            selectColumns = selectColumns + ", " + partitionColumn;
+        }
+
+        PostgresPagingQueryProvider queryProvider = new PostgresPagingQueryProvider();
+        queryProvider.setSelectClause(
+                "SELECT " + selectColumns
+                        + ", " + GeometrySql.asGeoJsonText2d(geom) + " AS geometry_geo_json"
+        );
+        queryProvider.setFromClause("FROM " + metadata.qualifiedSourceTable());
+
+        String geometryFilter = GeometrySql.validNonEmptyPredicate(geom);
+
+        String configWhere = metadata.whereClause();
+        boolean hasConfigWhere = configWhere != null
+                && !configWhere.isBlank()
+                && !"1=1".equals(configWhere.trim());
+
+        StringBuilder where = new StringBuilder("WHERE ").append(geometryFilter);
+        if (hasConfigWhere) {
+            where.append(" AND (").append(configWhere).append(")");
+        }
+
+        if (useIdRange) {
+            String numericPartitionColumn = "CAST(" + partitionColumn + " AS BIGINT)";
+            where.append(" AND ").append(numericPartitionColumn).append(" >= :minId")
+                    .append(" AND ").append(numericPartitionColumn).append(" <= :maxId");
+        }
+
+        queryProvider.setWhereClause(where.toString());
+
+        Map<String, Order> sortKeys = new HashMap<>();
+        sortKeys.put(partitionColumn, Order.ASCENDING);
+        queryProvider.setSortKeys(sortKeys);
+
+        return queryProvider;
+    }
+
+    private static class LayerFeatureRowMapper implements RowMapper<LayerFeatureRecord> {
+
+        private final LayerTableMetadata metadata;
+
+        LayerFeatureRowMapper(LayerTableMetadata metadata) {
+            this.metadata = metadata;
+        }
+
+        @Override
+        public LayerFeatureRecord mapRow(ResultSet rs, int rowNum) throws SQLException {
+            LayerFeatureRecord record = new LayerFeatureRecord();
+            record.setId(rs.getObject(metadata.primaryKeyColumn()));
+            record.setGeometryGeoJson(rs.getString("geometry_geo_json"));
+
+            for (String column : metadata.sourceNonGeometryColumnNames()) {
+                record.putAttribute(column, rs.getObject(column));
+            }
+
+            return record;
+        }
+    }
+}
