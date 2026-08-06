@@ -1,89 +1,43 @@
-# RER DSP — Job Data Migration
+# rer-dsp-job-data-migration
 
-**Projeto:** Rural Environmental Registry — Data Sharing Platform  
-**Componente:** Job de migração geoespacial (ETL Spring Batch)  
-**Artefato Maven:** `dsp-batch`  
-**Licença:** GPL-3.0
+> Este repositório é um dos módulos do **DSP (Data Sharing Platform)**, parte do ecossistema RER.
+> A documentação completa do projeto está em **[rer-dsp-docs](https://github.com/Rural-Environmental-Registry/rer-dsp-docs)**.
+> As informações abaixo tratam apenas deste módulo, não do projeto DSP como um todo.
 
----
+## Qual parte do DSP este módulo é
 
-## O que este projeto faz
+```mermaid
+flowchart LR
+    Source[(Banco de origem do adotante)]
+    Job((rer-dsp-job-data-migration))
+    Target[(dsp-db / geo-target)]
 
-Este job sincroniza dados geoespaciais do **banco de origem** da sua organização para os bancos do DSP.
-
-Ele possui dois tipos de migração:
-
-| Tipo | O que migra | Onde grava |
-|------|-------------|------------|
-| **Jobs fixos** | Unidades administrativas (3 níveis) e áreas de interesse | DSP DB + geo-target |
-| **Camadas genéricas** | Qualquer tabela PostGIS declarada no YAML | Somente geo-target |
-
-A carga inclui detecção de mudanças, leitura particionada, UPSERT e (quando aplicável) remoção de registros órfãos no destino.
-
----
-
-## Conceitos rápidos
-
-- **Camada** = tabela geográfica (ex.: `conservation.rivers`)
-- **Feição** = uma linha dentro dessa tabela (ex.: um trecho de rio)
-- **Geo-target** = banco usado na exibição de mapas (WMS)
-
----
-
-## Configuração mínima — camadas genéricas
-
-```yaml
-spring:
-  datasource:
-    source: { ... }       # banco de origem
-    target: { ... }       # DSP DB (jobs fixos)
-    geo-target: { ... }   # banco de exibição (camadas)
-    batch: { ... }        # metadados Spring Batch
-
-batch:
-  layers:
-    - source-table: schema.minha_tabela
-      area-of-interest-id-column: id_da_aoi_na_origem
-      srid: 4674
-
-execution-jobs:
-  area-of-interest-geoserver-job: true   # rodar antes das camadas
-  layer-jobs: true
+    Source -- extração --> Job
+    Job -- carga --> Target
 ```
 
-Destino automático: `dsp.minha_tabela` no geo-target.
+## Objetivo
 
----
+ETL baseado em Spring Batch que migra dados geoespaciais do banco de origem do adotante
+para os bancos do DSP.
+
+## Responsabilidades
+
+- Extrair dados geoespaciais da fonte do adotante
+- Transformar e validar as feições migradas
+- Carregar (UPSERT) os dados nos bancos do DSP (`target` e `geo-target`)
+
+## Tecnologias
+
+Java 21, Spring Boot 3.4.2, Spring Batch, PostgreSQL/PostGIS, Maven.
 
 ## Como executar
 
 ```bash
-# Metadados Spring Batch (primeira vez)
-psql -d batch_metadata -f src/main/resources/db/batch_metadata/02_spring_batch_schema.sql
-
-# Subir o job
 ./mvnw spring-boot:run
 ```
 
-Ordem recomendada: **unidades administrativas → área de interesse → camadas**.
-
----
-
-## Documentação completa
-
-| Tópico | Onde ler |
-|--------|----------|
-| **Camadas genéricas (guia didático)** | [Migração de camadas](../rer-dsp-docs/docs/migration/layer-migration.md) |
-| Job completo (YAML, datasources, jobs fixos) | [Job data-migration](../rer-dsp-docs/docs/migration/rer-dsp-job-data-migration.md) |
-| Onboarding | [Começando](../rer-dsp-docs/docs/getting-started.md) |
-
----
-
-## Geometria 3D (Z/M)
-
-O geo-target usa colunas 2D para WMS. Geometrias com elevação ou medida (ex.: `POINT Z`) são achatadas com `ST_Force2D` — X/Y são mantidos, Z/M descartados. Um aviso é registrado nos logs na introspecção.
-
----
+Ou, preferencialmente, via `rer-dsp-core` (`./setup.sh`), que orquestra a stack completa.
 
 ## Licença
 

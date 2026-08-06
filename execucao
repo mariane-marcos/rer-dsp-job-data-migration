@@ -1,4 +1,0 @@
-./mvnw spring-boot:run   -Dspring-boot.run.arguments="\
---execution-jobs.admin-unit-level-1-geoserver-job=true \
---execution-jobs.admin-unit-level-2-geoserver-job=false \
---execution-jobs.admin-unit-level-3-geoserver-job=false"
