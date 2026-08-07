@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Set;
 
 import static br.car.dsp_batch.layer.config.LayerConfig.AREA_OF_INTEREST_ID_COLUMN;
+import static br.car.dsp_batch.layer.config.LayerConfig.GEOMETRY_COLUMN;
 
 /**
  * Metadata for a layer table discovered on the source database.
@@ -51,7 +52,17 @@ public record LayerTableMetadata(
         return targetNonGeometryColumnNames();
     }
 
+    /**
+     * Geometry column name on geo-target (always {@code geom}).
+     */
+    public String resolveTargetGeometryColumn() {
+        return GEOMETRY_COLUMN;
+    }
+
     public String resolveTargetColumnName(String sourceColumnName) {
+        if (sourceColumnName.equals(geometryColumn)) {
+            return GEOMETRY_COLUMN;
+        }
         if (sourceColumnName.equals(areaOfInterestIdSourceColumn)
                 && !AREA_OF_INTEREST_ID_COLUMN.equals(sourceColumnName)) {
             return AREA_OF_INTEREST_ID_COLUMN;
@@ -60,6 +71,10 @@ public record LayerTableMetadata(
     }
 
     public String resolveSourceColumnName(String targetColumnName) {
+        if (GEOMETRY_COLUMN.equals(targetColumnName)
+                && !GEOMETRY_COLUMN.equals(geometryColumn)) {
+            return geometryColumn;
+        }
         if (AREA_OF_INTEREST_ID_COLUMN.equals(targetColumnName)
                 && !AREA_OF_INTEREST_ID_COLUMN.equals(areaOfInterestIdSourceColumn)) {
             return areaOfInterestIdSourceColumn;

@@ -25,19 +25,49 @@ class LayerTableDdlBuilderTest {
         assertTrue(ddl.contains("\"id_parcela\" varchar(80)"));
         assertTrue(ddl.contains("\"nome\" varchar(255)"));
         assertTrue(ddl.contains("\"area_of_interest_id\" varchar(80)"));
-        assertTrue(ddl.contains("\"geo\" geometry(Geometry, 4674)"));
+        assertTrue(ddl.contains("\"geom\" geometry(Geometry, 4674)"));
+        assertTrue(!ddl.contains("\"the_geom\""));
         assertTrue(ddl.contains("PRIMARY KEY (\"id_parcela\")"));
         assertTrue(!ddl.contains("\"cod_imovel\""));
     }
 
     @Test
-    void buildGeometryIndex_UsesGistOnGeometryColumn() {
+    void buildCreateTable_MigratesOnlyChosenGeometryColumn() {
+        List<ColumnMetadata> columns = List.of(
+                new ColumnMetadata("id_parcela", "varchar", 80, null, null, false, false),
+                new ColumnMetadata("cod_imovel", "varchar", 80, null, null, false, false),
+                new ColumnMetadata("centroid", "geometry", null, null, null, true, true),
+                new ColumnMetadata("the_geom", "geometry", null, null, null, true, true)
+        );
+        LayerTableMetadata metadata = new LayerTableMetadata(
+                "dsp_parcelas",
+                "parcelas",
+                new QualifiedTable("src", "parcelas"),
+                new QualifiedTable("dsp", "parcelas"),
+                "id_parcela",
+                "the_geom",
+                "cod_imovel",
+                4674,
+                columns,
+                List.of(),
+                "1=1"
+        );
+
+        String ddl = builder.buildCreateTable(metadata);
+
+        assertTrue(ddl.contains("\"geom\" geometry(Geometry, 4674)"));
+        assertTrue(!ddl.contains("\"centroid\""));
+        assertTrue(!ddl.contains("\"the_geom\""));
+    }
+
+    @Test
+    void buildGeometryIndex_UsesGistOnCanonicalGeomColumn() {
         LayerTableMetadata metadata = sampleMetadata();
 
         String ddl = builder.buildGeometryIndex(metadata);
 
         assertTrue(ddl.contains("CREATE INDEX IF NOT EXISTS"));
-        assertTrue(ddl.contains("USING GIST (\"geo\")"));
+        assertTrue(ddl.contains("USING GIST (\"geom\")"));
     }
 
     @Test
@@ -58,11 +88,11 @@ class LayerTableDdlBuilderTest {
                 new QualifiedTable("src", "parcelas"),
                 new QualifiedTable("dsp", "parcelas"),
                 "id_parcela",
-                "geo",
+                "the_geom",
                 "cod_imovel",
                 4674,
                 sampleMetadata().columns(),
-                List.of(new IndexMetadata("parcelas_geo_idx", List.of("geo"), "gist", false)),
+                List.of(new IndexMetadata("parcelas_geo_idx", List.of("the_geom"), "gist", false)),
                 "1=1"
         );
 
@@ -79,7 +109,7 @@ class LayerTableDdlBuilderTest {
                 new QualifiedTable("src", "parcelas"),
                 new QualifiedTable("dsp", "parcelas"),
                 "id_parcela",
-                "geo",
+                "the_geom",
                 "cod_imovel",
                 4674,
                 sampleMetadata().columns(),
@@ -100,7 +130,7 @@ class LayerTableDdlBuilderTest {
                 new QualifiedTable("src", "parcelas"),
                 new QualifiedTable("dsp", "parcelas"),
                 "id_parcela",
-                "geo",
+                "the_geom",
                 "cod_imovel",
                 4674,
                 sampleMetadata().columns(),
@@ -149,7 +179,7 @@ class LayerTableDdlBuilderTest {
                 new QualifiedTable("src", "parcelas"),
                 new QualifiedTable("dsp", "parcelas"),
                 "id_parcela",
-                "geo",
+                "the_geom",
                 "cod_imovel",
                 4674,
                 sampleMetadata().columns(),
@@ -179,7 +209,7 @@ class LayerTableDdlBuilderTest {
                 new ColumnMetadata("id_parcela", "varchar", 80, null, null, false, false),
                 new ColumnMetadata("nome", "varchar", 255, null, null, true, false),
                 new ColumnMetadata("cod_imovel", "varchar", 80, null, null, false, false),
-                new ColumnMetadata("geo", "geometry", null, null, null, true, true)
+                new ColumnMetadata("the_geom", "geometry", null, null, null, true, true)
         );
         return new LayerTableMetadata(
                 "dsp_parcelas",
@@ -187,7 +217,7 @@ class LayerTableDdlBuilderTest {
                 new QualifiedTable("src", "parcelas"),
                 new QualifiedTable("dsp", "parcelas"),
                 "id_parcela",
-                "geo",
+                "the_geom",
                 "cod_imovel",
                 4674,
                 columns,

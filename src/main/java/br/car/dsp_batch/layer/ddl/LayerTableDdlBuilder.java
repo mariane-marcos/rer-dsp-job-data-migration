@@ -40,7 +40,15 @@ public class LayerTableDdlBuilder {
 
         for (ColumnMetadata column : metadata.columns()) {
             if (column.geometry()) {
-                columnDefinitions.add(quote(column.name()) + " geometry(Geometry, "
+                // Only the chosen source geometry is migrated; always as canonical "geom".
+                if (!column.name().equals(metadata.geometryColumn())) {
+                    continue;
+                }
+                String targetGeom = metadata.resolveTargetGeometryColumn();
+                if (!emittedTargetColumns.add(targetGeom)) {
+                    continue;
+                }
+                columnDefinitions.add(quote(targetGeom) + " geometry(Geometry, "
                         + metadata.srid() + ")");
                 continue;
             }
@@ -67,7 +75,7 @@ public class LayerTableDdlBuilder {
         String indexName = sanitizeIndexName(metadata.targetTable().table() + "_geom_gist");
         return "CREATE INDEX IF NOT EXISTS " + quote(indexName)
                 + " ON " + metadata.qualifiedTargetTable()
-                + " USING GIST (" + quote(metadata.geometryColumn()) + ")";
+                + " USING GIST (" + quote(metadata.resolveTargetGeometryColumn()) + ")";
     }
 
     public String buildAreaOfInterestIdIndex(LayerTableMetadata metadata) {
@@ -80,13 +88,14 @@ public class LayerTableDdlBuilder {
     public List<String> buildSecondaryIndexes(LayerTableMetadata metadata) {
         List<String> statements = new ArrayList<>();
         Set<String> targetColumns = new LinkedHashSet<>(metadata.targetNonGeometryColumnNames());
-        targetColumns.add(metadata.geometryColumn());
+        targetColumns.add(metadata.resolveTargetGeometryColumn());
 
         for (IndexMetadata index : metadata.indexes()) {
             if (index.columns().isEmpty()) {
                 continue;
             }
 
+            // Indexes on non-migrated geometry columns are skipped (column absent on target).
             List<String> mappedColumns = index.columns().stream()
                     .map(metadata::resolveTargetColumnName)
                     .toList();
@@ -134,7 +143,7 @@ public class LayerTableDdlBuilder {
             return false;
         }
         String only = mappedColumns.getFirst();
-        if (only.equals(metadata.geometryColumn()) && "gist".equalsIgnoreCase(method)) {
+        if (only.equals(metadata.resolveTargetGeometryColumn()) && "gist".equalsIgnoreCase(method)) {
             return true;
         }
         return only.equals(LayerConfig.AREA_OF_INTEREST_ID_COLUMN);

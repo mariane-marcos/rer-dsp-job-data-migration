@@ -66,7 +66,7 @@ public class LayerFeaturePersistenceService {
     private void upsertGeoTarget(List<LayerFeatureRecord> items, LayerTableMetadata metadata) {
         List<String> targetColumns = metadata.targetNonGeometryColumnNames();
         String targetPk = metadata.resolveTargetPrimaryKeyColumn();
-        String geom = metadata.geometryColumn();
+        String geom = metadata.resolveTargetGeometryColumn();
         int srid = metadata.srid();
 
         String insertColumns = String.join(", ", targetColumns) + ", " + geom;

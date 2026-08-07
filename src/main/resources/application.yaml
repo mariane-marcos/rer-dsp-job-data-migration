@@ -135,9 +135,13 @@ batch:
   # Camadas: o job cria dsp.<tabela> no geo-target automaticamente.
   # A coluna de vinculo vira area_of_interest_id no destino.
   # Para cada tabela de camada que for necessário migrar, adicionar aqui.
+  # Tabelas sem srid, o job não migra, mas você pode declarar a baixo.
+  # Se a tabela tiver multiplas colunas de geometria, o job irá migrar a primeira coluna de geometria. Você pode declarar a coluna de geometria que será migrada.
   layers:
-    - source-table: conservation.rivers
-      area-of-interest-id-column: conservation_unit_id
+    - source-table: <schema>.<table_name>
+      area-of-interest-id-column: <foreign_key_column>
+      # geometry-column: <geometry_column_name>
+      # srid: <srid_number>
 
 parallelization:
   jobs:

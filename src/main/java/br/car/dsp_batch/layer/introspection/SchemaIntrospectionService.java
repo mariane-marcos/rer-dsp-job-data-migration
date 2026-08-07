@@ -13,6 +13,8 @@ import javax.sql.DataSource;
 import java.util.ArrayList;
 import java.util.List;
 
+import static br.car.dsp_batch.layer.config.LayerConfig.GEOMETRY_COLUMN;
+
 /**
  * Automatically discovers PostGIS table structure on the source database.
  */
@@ -53,16 +55,18 @@ public class SchemaIntrospectionService {
         String areaOfInterestIdColumn = config.getAreaOfInterestIdColumn().trim();
         requireColumn(columns, areaOfInterestIdColumn, "area-of-interest-id-column");
         GeometryInfo geometryInfo = resolveGeometry(sourceJdbc, source, columns, config.getGeometryColumn());
+        rejectGeomNameCollision(source, columns, geometryInfo.columnName());
         warnIfHigherDimensional(source, geometryInfo);
         int srid = resolveSrid(sourceJdbc, source, geometryInfo, config.getSrid());
         List<IndexMetadata> indexes = fetchIndexes(sourceJdbc, source);
 
         log.info(
-                "Introspection completed for {}: pk={}, aoiLink={}, geom={}, srid={}, columns={}",
+                "Introspection completed for {}: pk={}, aoiLink={}, sourceGeom={} -> targetGeom={}, srid={}, columns={}",
                 source.qualified(),
                 primaryKey,
                 areaOfInterestIdColumn,
                 geometryInfo.columnName(),
+                GEOMETRY_COLUMN,
                 srid,
                 columns.size()
         );
@@ -165,11 +169,55 @@ public class SchemaIntrospectionService {
                                          List<ColumnMetadata> columns,
                                          String override) {
         if (override != null && !override.isBlank()) {
-            requireColumn(columns, override.trim(), "geometry-column");
-            return new GeometryInfo(override.trim(), null, null);
+            String chosen = override.trim();
+            requireColumn(columns, chosen, "geometry-column");
+            requireGeometryTypedColumn(columns, chosen);
+            GeometryInfo registered = findRegisteredGeometry(jdbc, table, chosen);
+            if (registered != null) {
+                return registered;
+            }
+            return new GeometryInfo(chosen, null, null);
         }
 
-        List<GeometryInfo> geometries = jdbc.query(
+        List<GeometryInfo> geometries = fetchRegisteredGeometries(jdbc, table);
+
+        if (geometries.isEmpty()) {
+            List<String> geometryColumns = columns.stream()
+                    .filter(ColumnMetadata::geometry)
+                    .map(ColumnMetadata::name)
+                    .toList();
+            if (geometryColumns.isEmpty()) {
+                throw new IllegalStateException(
+                        "Table " + table.qualified()
+                                + " has no geometry column. Set batch.layers.geometry-column "
+                                + "to the source column that should become '" + GEOMETRY_COLUMN + "'.");
+            }
+            if (geometryColumns.size() > 1) {
+                log.warn(
+                        "Table {} has multiple geometry columns ({}). Using '{}'. "
+                                + "Set batch.layers.geometry-column to choose another.",
+                        table.qualified(),
+                        geometryColumns,
+                        geometryColumns.getFirst()
+                );
+            }
+            return new GeometryInfo(geometryColumns.getFirst(), null, null);
+        }
+
+        if (geometries.size() > 1) {
+            log.warn(
+                    "Table {} has multiple geometry_columns entries ({}). Using '{}'. "
+                            + "Set batch.layers.geometry-column to choose another.",
+                    table.qualified(),
+                    geometries.stream().map(GeometryInfo::columnName).toList(),
+                    geometries.getFirst().columnName()
+            );
+        }
+        return geometries.getFirst();
+    }
+
+    private List<GeometryInfo> fetchRegisteredGeometries(JdbcTemplate jdbc, QualifiedTable table) {
+        return jdbc.query(
                 """
                 SELECT f_geometry_column, srid, type
                 FROM geometry_columns
@@ -184,37 +232,61 @@ public class SchemaIntrospectionService {
                 table.schema(),
                 table.table()
         );
+    }
 
-        if (geometries.isEmpty()) {
-            List<String> geometryColumns = columns.stream()
-                    .filter(ColumnMetadata::geometry)
-                    .map(ColumnMetadata::name)
-                    .toList();
-            if (geometryColumns.isEmpty()) {
-                throw new IllegalStateException(
-                        "Table " + table.qualified()
-                                + " has no geometry column. Set geometry-column.");
-            }
-            if (geometryColumns.size() > 1) {
-                log.warn(
-                        "Table {} has multiple geometry columns ({}). Using '{}'.",
-                        table.qualified(),
-                        geometryColumns,
-                        geometryColumns.getFirst()
-                );
-            }
-            return new GeometryInfo(geometryColumns.getFirst(), null, null);
-        }
+    private GeometryInfo findRegisteredGeometry(JdbcTemplate jdbc,
+                                                QualifiedTable table,
+                                                String columnName) {
+        List<GeometryInfo> matched = jdbc.query(
+                """
+                SELECT f_geometry_column, srid, type
+                FROM geometry_columns
+                WHERE f_table_schema = ? AND f_table_name = ? AND f_geometry_column = ?
+                """,
+                (rs, rowNum) -> new GeometryInfo(
+                        rs.getString("f_geometry_column"),
+                        (Integer) rs.getObject("srid"),
+                        rs.getString("type")
+                ),
+                table.schema(),
+                table.table(),
+                columnName
+        );
+        return matched.isEmpty() ? null : matched.getFirst();
+    }
 
-        if (geometries.size() > 1) {
-            log.warn(
-                    "Table {} has multiple geometry_columns entries ({}). Using '{}'.",
-                    table.qualified(),
-                    geometries.stream().map(GeometryInfo::columnName).toList(),
-                    geometries.getFirst().columnName()
-            );
+    private void requireGeometryTypedColumn(List<ColumnMetadata> columns, String name) {
+        boolean geometryTyped = columns.stream()
+                .anyMatch(column -> column.name().equals(name) && column.geometry());
+        if (!geometryTyped) {
+            throw new IllegalStateException(
+                    "geometry-column '" + name + "' exists but is not geometry/geography. "
+                            + "Set batch.layers.geometry-column to a PostGIS geometry column "
+                            + "(it will be stored as '" + GEOMETRY_COLUMN + "' on geo-target).");
         }
-        return geometries.getFirst();
+    }
+
+    /**
+     * Target always uses {@code geom}; reject a non-geometry source attribute with that name
+     * when the migrated geometry column itself has another name.
+     */
+    private void rejectGeomNameCollision(QualifiedTable table,
+                                         List<ColumnMetadata> columns,
+                                         String geometryColumnName) {
+        if (GEOMETRY_COLUMN.equals(geometryColumnName)) {
+            return;
+        }
+        boolean conflict = columns.stream()
+                .anyMatch(column -> !column.geometry() && GEOMETRY_COLUMN.equals(column.name()));
+        if (conflict) {
+            throw new IllegalStateException(
+                    "Table " + table.qualified()
+                            + " has a non-geometry column named '" + GEOMETRY_COLUMN
+                            + "' while the geometry to migrate is '" + geometryColumnName
+                            + "'. Rename that attribute on the source, or set geometry-column: "
+                            + GEOMETRY_COLUMN + " if that is the column to migrate "
+                            + "(destination geometry is always '" + GEOMETRY_COLUMN + "').");
+        }
     }
 
     private void warnIfHigherDimensional(QualifiedTable table, GeometryInfo geometryInfo) {
@@ -261,7 +333,8 @@ public class SchemaIntrospectionService {
         if (sampledSrid == null || sampledSrid <= 0) {
             throw new IllegalStateException(
                     "SRID not found for " + table.qualified()
-                            + ". Set batch.layers.srid.");
+                            + ". Set batch.layers.srid to the SRID that should be used "
+                            + "for this layer on geo-target.");
         }
         return sampledSrid;
     }

@@ -129,7 +129,7 @@ public class LayerChangeDetectionService {
     private Map<Object, RecordComparison> fetchTargetData(JdbcTemplate targetJdbc,
                                                           LayerTableMetadata metadata) {
         String pk = metadata.resolveTargetPrimaryKeyColumn();
-        String geom = metadata.geometryColumn();
+        String geom = metadata.resolveTargetGeometryColumn();
         String table = metadata.qualifiedTargetTable();
         List<String> targetColumns = metadata.targetComparisonColumnNames();
         String attributeColumns = joinAttributeSelectColumns(pk, targetColumns);

@@ -18,6 +18,13 @@ public class LayerConfig {
     /** Canonical FK column on every migrated layer table in geo-target. */
     public static final String AREA_OF_INTEREST_ID_COLUMN = "area_of_interest_id";
 
+    /**
+     * Canonical geometry column on every migrated layer table in geo-target.
+     * Source may use another name ({@code the_geom}, {@code shape}, etc.);
+     * configure {@code geometry-column} to choose which source column to migrate.
+     */
+    public static final String GEOMETRY_COLUMN = "geom";
+
     private String sourceTable;
     private String layerName;
     private String areaOfInterestIdColumn;

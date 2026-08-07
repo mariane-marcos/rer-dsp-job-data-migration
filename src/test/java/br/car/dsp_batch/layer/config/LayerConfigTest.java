@@ -36,4 +36,9 @@ class LayerConfigTest {
     void areaOfInterestIdColumn_ConstantMatchesTargetColumnName() {
         assertEquals("area_of_interest_id", LayerConfig.AREA_OF_INTEREST_ID_COLUMN);
     }
+
+    @Test
+    void geometryColumn_ConstantMatchesTargetColumnName() {
+        assertEquals("geom", LayerConfig.GEOMETRY_COLUMN);
+    }
 }
