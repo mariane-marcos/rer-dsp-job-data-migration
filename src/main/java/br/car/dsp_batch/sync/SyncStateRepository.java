@@ -1,4 +1,4 @@
-package br.car.dsp_batch.layer.sync;
+package br.car.dsp_batch.sync;
 
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -11,13 +11,13 @@ import java.time.Instant;
 import java.util.Optional;
 
 /**
- * Persistence for layer watermarks on the primary datasource ({@code batch_metadata}).
+ * Persistence for incremental sync watermarks on the primary datasource ({@code batch_metadata}).
  */
 @Repository
-public class LayerSyncStateRepository {
+public class SyncStateRepository {
 
-    private static final RowMapper<LayerSyncState> ROW_MAPPER = (rs, rowNum) -> new LayerSyncState(
-            rs.getString("layer_key"),
+    private static final RowMapper<SyncState> ROW_MAPPER = (rs, rowNum) -> new SyncState(
+            rs.getString("sync_key"),
             rs.getString("source_table"),
             toInstant(rs.getTimestamp("watermark_updated_at")),
             toInstant(rs.getTimestamp("last_success_at")),
@@ -27,21 +27,21 @@ public class LayerSyncStateRepository {
 
     private final JdbcTemplate batchJdbcTemplate;
 
-    public LayerSyncStateRepository(@Qualifier("jdbcTemplate") JdbcTemplate batchJdbcTemplate) {
+    public SyncStateRepository(@Qualifier("jdbcTemplate") JdbcTemplate batchJdbcTemplate) {
         this.batchJdbcTemplate = batchJdbcTemplate;
     }
 
-    public Optional<LayerSyncState> findByLayerKey(String layerKey) {
+    public Optional<SyncState> findBySyncKey(String syncKey) {
         try {
-            LayerSyncState state = batchJdbcTemplate.queryForObject(
+            SyncState state = batchJdbcTemplate.queryForObject(
                     """
-                    SELECT layer_key, source_table, watermark_updated_at, last_success_at,
+                    SELECT sync_key, source_table, watermark_updated_at, last_success_at,
                            last_job_execution_id, last_orphan_check_at
-                    FROM dsp_layer_sync_state
-                    WHERE layer_key = ?
+                    FROM dsp_sync_state
+                    WHERE sync_key = ?
                     """,
                     ROW_MAPPER,
-                    layerKey
+                    syncKey
             );
             return Optional.ofNullable(state);
         } catch (EmptyResultDataAccessException ex) {
@@ -49,34 +49,34 @@ public class LayerSyncStateRepository {
         }
     }
 
-    public Optional<Instant> findWatermark(String layerKey) {
-        return findByLayerKey(layerKey).map(LayerSyncState::watermarkUpdatedAt);
+    public Optional<Instant> findWatermark(String syncKey) {
+        return findBySyncKey(syncKey).map(SyncState::watermarkUpdatedAt);
     }
 
     /**
      * Advances the watermark after a successful run.
      * If {@code watermarkUpdatedAt} is null, keeps the current value.
      */
-    public void advanceWatermark(String layerKey,
+    public void advanceWatermark(String syncKey,
                                  String sourceTable,
                                  Instant watermarkUpdatedAt,
                                  long jobExecutionId) {
         Instant now = Instant.now();
         batchJdbcTemplate.update(
                 """
-                INSERT INTO dsp_layer_sync_state (
-                    layer_key, source_table, watermark_updated_at, last_success_at,
+                INSERT INTO dsp_sync_state (
+                    sync_key, source_table, watermark_updated_at, last_success_at,
                     last_job_execution_id, last_orphan_check_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, NULL, ?)
-                ON CONFLICT (layer_key) DO UPDATE SET
+                ON CONFLICT (sync_key) DO UPDATE SET
                     source_table = EXCLUDED.source_table,
                     watermark_updated_at = COALESCE(EXCLUDED.watermark_updated_at,
-                        dsp_layer_sync_state.watermark_updated_at),
+                        dsp_sync_state.watermark_updated_at),
                     last_success_at = EXCLUDED.last_success_at,
                     last_job_execution_id = EXCLUDED.last_job_execution_id,
                     updated_at = EXCLUDED.updated_at
                 """,
-                layerKey,
+                syncKey,
                 sourceTable,
                 toTimestamp(watermarkUpdatedAt),
                 toTimestamp(now),
@@ -85,20 +85,20 @@ public class LayerSyncStateRepository {
         );
     }
 
-    public void markOrphanCheck(String layerKey, String sourceTable) {
+    public void markOrphanCheck(String syncKey, String sourceTable) {
         Instant now = Instant.now();
         batchJdbcTemplate.update(
                 """
-                INSERT INTO dsp_layer_sync_state (
-                    layer_key, source_table, watermark_updated_at, last_success_at,
+                INSERT INTO dsp_sync_state (
+                    sync_key, source_table, watermark_updated_at, last_success_at,
                     last_job_execution_id, last_orphan_check_at, updated_at
                 ) VALUES (?, ?, NULL, NULL, NULL, ?, ?)
-                ON CONFLICT (layer_key) DO UPDATE SET
+                ON CONFLICT (sync_key) DO UPDATE SET
                     source_table = EXCLUDED.source_table,
                     last_orphan_check_at = EXCLUDED.last_orphan_check_at,
                     updated_at = EXCLUDED.updated_at
                 """,
-                layerKey,
+                syncKey,
                 sourceTable,
                 toTimestamp(now),
                 toTimestamp(now)

@@ -37,12 +37,12 @@ public abstract class AdministrativeUnitGeoserverConfig {
 
     private final Logger logger = LoggerFactory.getLogger(getClass());
 
-    private final ParallelizationConfig parallelizationConfig;
-    private final ParallelizationMonitorListener parallelizationMonitorListener;
-    private final ChangeDecider changeDecider;
-    private final GeoCacheUpdateListener geoCacheUpdateListener;
-    private final ChangeDetectionStrategyResolver strategyResolver;
-    private final AdministrativeUnitPersistenceService persistenceService;
+    protected final ParallelizationConfig parallelizationConfig;
+    protected final ParallelizationMonitorListener parallelizationMonitorListener;
+    protected final ChangeDecider changeDecider;
+    protected final GeoCacheUpdateListener geoCacheUpdateListener;
+    protected final ChangeDetectionStrategyResolver strategyResolver;
+    protected final AdministrativeUnitPersistenceService persistenceService;
 
     protected AdministrativeUnitGeoserverConfig(
             ParallelizationConfig parallelizationConfig,

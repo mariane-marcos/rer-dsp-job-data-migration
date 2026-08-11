@@ -31,6 +31,8 @@ public class AdministrativeUnitTableProperties implements JobTableConfig {
     private Map<String, String> columnMapping = new HashMap<>();
     private int srid;
     private ChangeDetectionStrategyType changeDetectionStrategy = ChangeDetectionStrategyType.DEFAULT;
+    private String updatedAtColumn;
+    private String syncKey;
 
     @Override
     public String getPartitionColumn() {

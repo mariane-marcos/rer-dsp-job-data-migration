@@ -3,6 +3,7 @@ package br.car.dsp_batch.batch.reader;
 import br.car.dsp_batch.batch.config.JobTableConfig;
 import br.car.dsp_batch.batch.dto.AdministrativeUnitDTO;
 import br.car.dsp_batch.geometry.GeometrySql;
+import br.car.dsp_batch.sync.WatermarkSql;
 import org.springframework.batch.item.database.Order;
 import org.springframework.batch.item.database.PagingQueryProvider;
 import org.springframework.batch.item.database.support.PostgresPagingQueryProvider;
@@ -11,6 +12,7 @@ import org.springframework.jdbc.core.RowMapper;
 import javax.sql.DataSource;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -28,14 +30,28 @@ public class AdministrativeUnitGeoserverReader
                                              int pageSize,
                                              JobTableConfig tableConfig,
                                              String readerName) {
+        this(dataSource, minId, maxId, pageSize, tableConfig, null, null, readerName);
+    }
+
+    public AdministrativeUnitGeoserverReader(DataSource dataSource,
+                                             Long minId,
+                                             Long maxId,
+                                             int pageSize,
+                                             JobTableConfig tableConfig,
+                                             Instant watermark,
+                                             String updatedAtColumn,
+                                             String readerName) {
         super(dataSource, minId, maxId, pageSize);
         this.setName(readerName);
         boolean useIdRange = minId != null && maxId != null;
-        this.setQueryProvider(createQueryProvider(tableConfig, useIdRange));
+        this.setQueryProvider(createQueryProvider(tableConfig, useIdRange, watermark, updatedAtColumn));
         this.setRowMapper(new AdministrativeUnitRowMapper(tableConfig));
     }
 
-    private PagingQueryProvider createQueryProvider(JobTableConfig tableConfig, boolean useIdRange) {
+    private PagingQueryProvider createQueryProvider(JobTableConfig tableConfig,
+                                                    boolean useIdRange,
+                                                    Instant watermark,
+                                                    String updatedAtColumn) {
         String partitionColumn = tableConfig.getPartitionColumn();
         String geom = tableConfig.getGeometryColumn();
         List<String> persistColumns = new ArrayList<>(tableConfig.getAllBusinessPersistColumns());
@@ -70,6 +86,11 @@ public class AdministrativeUnitGeoserverReader
         StringBuilder where = new StringBuilder("WHERE ").append(geometryFilter);
         if (hasConfigWhere) {
             where.append(" AND (").append(configWhere).append(")");
+        }
+
+        if (updatedAtColumn != null && !updatedAtColumn.isBlank()) {
+            String updatedAtFilter = WatermarkSql.buildUpdatedAtFilter(updatedAtColumn.trim(), watermark);
+            where.append(" AND ").append(updatedAtFilter);
         }
 
         if (useIdRange) {

@@ -42,12 +42,31 @@ class ChangeDetectionStrategyResolverTest {
     void resolvesDateRangeStrategy() {
         DefaultChangeDetectionStrategy defaultStrategy = new DefaultChangeDetectionStrategy();
         DateRangeChangeDetectionStrategy dateRangeStrategy = new DateRangeChangeDetectionStrategy();
+        WatermarkChangeDetectionStrategy watermarkStrategy =
+                new WatermarkChangeDetectionStrategy(null);
         ChangeDetectionStrategyResolver resolver =
-                new ChangeDetectionStrategyResolver(List.of(defaultStrategy, dateRangeStrategy));
+                new ChangeDetectionStrategyResolver(
+                        List.of(defaultStrategy, dateRangeStrategy, watermarkStrategy));
 
         ChangeDetectionStrategy resolved = resolver.resolve(ChangeDetectionStrategyType.DATE_RANGE);
 
         assertEquals(ChangeDetectionStrategyType.DATE_RANGE, resolved.getType());
+        assertNotNull(resolved);
+    }
+
+    @Test
+    void resolvesWatermarkStrategy() {
+        DefaultChangeDetectionStrategy defaultStrategy = new DefaultChangeDetectionStrategy();
+        DateRangeChangeDetectionStrategy dateRangeStrategy = new DateRangeChangeDetectionStrategy();
+        WatermarkChangeDetectionStrategy watermarkStrategy =
+                new WatermarkChangeDetectionStrategy(null);
+        ChangeDetectionStrategyResolver resolver =
+                new ChangeDetectionStrategyResolver(
+                        List.of(defaultStrategy, dateRangeStrategy, watermarkStrategy));
+
+        ChangeDetectionStrategy resolved = resolver.resolve(ChangeDetectionStrategyType.WATERMARK);
+
+        assertEquals(ChangeDetectionStrategyType.WATERMARK, resolved.getType());
         assertNotNull(resolved);
     }
 

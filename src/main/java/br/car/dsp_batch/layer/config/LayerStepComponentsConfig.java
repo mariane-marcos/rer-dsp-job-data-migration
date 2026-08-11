@@ -4,7 +4,7 @@ import br.car.dsp_batch.batch.config.ParallelizationConfig;
 import br.car.dsp_batch.layer.metadata.LayerMetadataRegistry;
 import br.car.dsp_batch.layer.reader.LayerFeatureReader;
 import br.car.dsp_batch.layer.service.LayerFeaturePersistenceService;
-import br.car.dsp_batch.layer.sync.LayerSyncStateRepository;
+import br.car.dsp_batch.sync.SyncStateRepository;
 import br.car.dsp_batch.layer.writer.LayerFeatureWriter;
 import org.springframework.batch.core.configuration.annotation.StepScope;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -31,7 +31,7 @@ public class LayerStepComponentsConfig {
             @Value("#{stepExecutionContext['maxId']}") Long maxId,
             LayerMetadataRegistry registry,
             ParallelizationConfig parallelizationConfig,
-            LayerSyncStateRepository syncStateRepository) {
+            SyncStateRepository syncStateRepository) {
         var metadata = registry.getRequired(layerKey);
         int pageSize = parallelizationConfig.getJobSettings(layerJobName).getPageSize();
         Instant watermark = syncStateRepository.findWatermark(layerKey).orElse(null);

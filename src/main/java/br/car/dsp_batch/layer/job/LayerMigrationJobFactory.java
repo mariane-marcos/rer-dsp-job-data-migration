@@ -9,9 +9,9 @@ import br.car.dsp_batch.layer.dto.LayerFeatureRecord;
 import br.car.dsp_batch.layer.introspection.SchemaIntrospectionService;
 import br.car.dsp_batch.layer.metadata.LayerMetadataRegistry;
 import br.car.dsp_batch.layer.partitioner.DeferredLayerPartitioner;
-import br.car.dsp_batch.layer.listener.LayerWatermarkCommitListener;
+import br.car.dsp_batch.sync.SyncWatermarkCommitListener;
 import br.car.dsp_batch.layer.service.LayerChangeDetectionService;
-import br.car.dsp_batch.layer.sync.LayerSyncStateRepository;
+import br.car.dsp_batch.sync.SyncStateRepository;
 import br.car.dsp_batch.layer.tasklet.LayerChangeDetectionTasklet;
 import br.car.dsp_batch.layer.tasklet.LayerTableSetupTasklet;
 import lombok.extern.slf4j.Slf4j;
@@ -50,8 +50,8 @@ public class LayerMigrationJobFactory {
     private final LayerTableDdlBuilder ddlBuilder;
     private final LayerMetadataRegistry registry;
     private final LayerChangeDetectionService changeDetectionService;
-    private final LayerSyncStateRepository syncStateRepository;
-    private final LayerWatermarkCommitListener watermarkCommitListener;
+    private final SyncStateRepository syncStateRepository;
+    private final SyncWatermarkCommitListener watermarkCommitListener;
     private final ChangeDecider changeDecider;
     private final ParallelizationConfig parallelizationConfig;
     private final ParallelizationMonitorListener parallelizationMonitorListener;
@@ -67,8 +67,8 @@ public class LayerMigrationJobFactory {
             LayerTableDdlBuilder ddlBuilder,
             LayerMetadataRegistry registry,
             LayerChangeDetectionService changeDetectionService,
-            LayerSyncStateRepository syncStateRepository,
-            LayerWatermarkCommitListener watermarkCommitListener,
+            SyncStateRepository syncStateRepository,
+            SyncWatermarkCommitListener watermarkCommitListener,
             ChangeDecider changeDecider,
             ParallelizationConfig parallelizationConfig,
             ParallelizationMonitorListener parallelizationMonitorListener,

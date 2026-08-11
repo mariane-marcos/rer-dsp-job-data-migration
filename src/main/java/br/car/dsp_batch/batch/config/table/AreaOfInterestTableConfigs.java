@@ -5,7 +5,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Bean of {@link br.car.dsp_batch.batch.config.JobTableConfig} to Area of Interest.
+ * Binds and validates {@link AreaOfInterestTableProperties}.
  */
 @Configuration
 public class AreaOfInterestTableConfigs {

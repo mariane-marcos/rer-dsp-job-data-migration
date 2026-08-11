@@ -4,7 +4,8 @@ import br.car.dsp_batch.batch.partitioner.ColumnRangePartitioner;
 import br.car.dsp_batch.layer.metadata.LayerMetadataRegistry;
 import br.car.dsp_batch.layer.metadata.LayerTableMetadata;
 import br.car.dsp_batch.layer.service.LayerChangeDetectionService;
-import br.car.dsp_batch.layer.sync.LayerSyncStateRepository;
+import br.car.dsp_batch.sync.SyncStateRepository;
+import br.car.dsp_batch.sync.WatermarkSql;
 import org.springframework.batch.core.partition.support.Partitioner;
 import org.springframework.batch.item.ExecutionContext;
 
@@ -22,12 +23,12 @@ public class DeferredLayerPartitioner implements Partitioner {
     private final LayerMetadataRegistry registry;
     private final String layerKey;
     private final DataSource sourceDataSource;
-    private final LayerSyncStateRepository syncStateRepository;
+    private final SyncStateRepository syncStateRepository;
 
     public DeferredLayerPartitioner(LayerMetadataRegistry registry,
                                     String layerKey,
                                     DataSource sourceDataSource,
-                                    LayerSyncStateRepository syncStateRepository) {
+                                    SyncStateRepository syncStateRepository) {
         this.registry = registry;
         this.layerKey = layerKey;
         this.sourceDataSource = sourceDataSource;
@@ -39,7 +40,7 @@ public class DeferredLayerPartitioner implements Partitioner {
         LayerTableMetadata metadata = registry.getRequired(layerKey);
         Instant watermark = syncStateRepository.findWatermark(layerKey).orElse(null);
 
-        String whereClause = combineWhere(
+        String whereClause = WatermarkSql.combineWhere(
                 metadata.whereClause(),
                 LayerChangeDetectionService.buildUpdatedAtFilterSql(
                         metadata.updatedAtSourceColumn(), watermark)
@@ -52,22 +53,5 @@ public class DeferredLayerPartitioner implements Partitioner {
                 whereClause
         );
         return new LayerPartitioner(delegate, layerKey).partition(gridSize);
-    }
-
-    static String combineWhere(String configWhere, String updatedAtFilter) {
-        boolean hasConfigWhere = configWhere != null
-                && !configWhere.isBlank()
-                && !"1=1".equals(configWhere.trim());
-
-        if (!hasConfigWhere && updatedAtFilter == null) {
-            return null;
-        }
-        if (hasConfigWhere && updatedAtFilter == null) {
-            return configWhere;
-        }
-        if (!hasConfigWhere) {
-            return updatedAtFilter;
-        }
-        return "(" + configWhere + ") AND " + updatedAtFilter;
     }
 }

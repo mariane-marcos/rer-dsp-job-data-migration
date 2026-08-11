@@ -7,5 +7,7 @@ package br.car.dsp_batch.batch.config.strategy;
 public enum ChangeDetectionStrategyType {
     DEFAULT,
     /** Filters comparison columns within the {@code startDate}–{@code endDate} range. */
-    DATE_RANGE
+    DATE_RANGE,
+    /** Incremental sync using {@code updated-at-column} and a persisted watermark. */
+    WATERMARK
 }

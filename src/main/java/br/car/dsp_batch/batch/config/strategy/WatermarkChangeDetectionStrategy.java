@@ -1,71 +1,73 @@
-package br.car.dsp_batch.layer.service;
+package br.car.dsp_batch.batch.config.strategy;
 
+import br.car.dsp_batch.batch.config.JobTableConfig;
 import br.car.dsp_batch.geometry.GeometrySql;
-import br.car.dsp_batch.layer.metadata.LayerTableMetadata;
+import br.car.dsp_batch.service.AdministrativeUnitPersistenceService;
 import br.car.dsp_batch.sync.SyncState;
 import br.car.dsp_batch.sync.SyncStateRepository;
 import br.car.dsp_batch.sync.WatermarkContextKeys;
 import br.car.dsp_batch.sync.WatermarkSettings;
-import br.car.dsp_batch.sync.WatermarkSql;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.stereotype.Service;
+import org.springframework.jdbc.core.RowCallbackHandler;
+import org.springframework.stereotype.Component;
 
 import java.sql.Timestamp;
-import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 /**
- * Incremental change detection for layers using an {@code updated_at} watermark.
- * Orphan (deleted) rows are checked on the initial load and periodically afterwards.
+ * Incremental change detection using an {@code updated-at-column} watermark.
+ * Orphan rows are removed from both business and geo targets on a periodic schedule.
  */
 @Slf4j
-@Service
-public class LayerChangeDetectionService {
-
-    public static final String CTX_HAS_CHANGES = WatermarkContextKeys.HAS_CHANGES;
-    public static final String CTX_AFFECTED_BBOXES = WatermarkContextKeys.AFFECTED_BBOXES;
-    public static final String CTX_LAYER_NAME = WatermarkContextKeys.LAYER_NAME;
-    public static final String CTX_PROPOSED_WATERMARK = WatermarkContextKeys.PROPOSED_WATERMARK;
-    public static final String CTX_ORPHAN_CHECK_RAN = WatermarkContextKeys.ORPHAN_CHECK_RAN;
-
-    /** Maximum interval between orphan scans. */
-    static final Duration ORPHAN_CHECK_INTERVAL = WatermarkSettings.ORPHAN_CHECK_INTERVAL;
+@Component
+public class WatermarkChangeDetectionStrategy implements ChangeDetectionStrategy {
 
     private final SyncStateRepository syncStateRepository;
 
-    public LayerChangeDetectionService(SyncStateRepository syncStateRepository) {
+    public WatermarkChangeDetectionStrategy(SyncStateRepository syncStateRepository) {
         this.syncStateRepository = syncStateRepository;
     }
 
-    public void detectChanges(JdbcTemplate sourceJdbc,
-                              JdbcTemplate geoTargetJdbc,
-                              LayerTableMetadata metadata,
-                              ChunkContext chunkContext) {
-        LayerFeaturePersistenceService.requirePositiveSrid(metadata);
-        log.info("Starting incremental change detection for table: {}", metadata.qualifiedSourceTable());
+    @Override
+    public ChangeDetectionStrategyType getType() {
+        return ChangeDetectionStrategyType.WATERMARK;
+    }
 
-        Optional<SyncState> state = syncStateRepository.findBySyncKey(metadata.layerKey());
+    @Override
+    public void detectChanges(JdbcTemplate sourceJdbc,
+                              JdbcTemplate targetJdbc,
+                              JdbcTemplate geoTargetJdbc,
+                              JobTableConfig tableConfig,
+                              ChunkContext chunkContext) {
+        AdministrativeUnitPersistenceService.requirePositiveSrid(tableConfig);
+        requireUpdatedAtColumn(tableConfig);
+
+        String syncKey = requireSyncKey(tableConfig);
+        log.info("Starting watermark change detection for table={} syncKey={}",
+                tableConfig.getSourceTable(), syncKey);
+
+        Optional<SyncState> state = syncStateRepository.findBySyncKey(syncKey);
         Instant watermark = state.map(SyncState::watermarkUpdatedAt).orElse(null);
         boolean runOrphanCheck = shouldRunOrphanCheck(state.orElse(null));
 
         List<String> deltaBboxes = new ArrayList<>();
-        Instant maxUpdatedAt = collectDeltaBboxes(sourceJdbc, metadata, watermark, deltaBboxes);
+        Instant maxUpdatedAt = collectDeltaBboxes(sourceJdbc, tableConfig, watermark, deltaBboxes);
 
         List<String> affectedBboxes = new ArrayList<>(deltaBboxes);
         if (runOrphanCheck) {
-            log.info("Running orphan check for {}", metadata.qualifiedSourceTable());
-            List<String> orphanBboxes = deleteOrphans(sourceJdbc, geoTargetJdbc, metadata);
-            affectedBboxes.addAll(orphanBboxes);
+            log.info("Running orphan check for {}", tableConfig.getSourceTable());
+            affectedBboxes.addAll(deleteOrphans(sourceJdbc, targetJdbc, geoTargetJdbc, tableConfig));
         }
 
         var jobContext = chunkContext.getStepContext()
@@ -73,33 +75,51 @@ public class LayerChangeDetectionService {
                 .getJobExecution()
                 .getExecutionContext();
 
-        jobContext.putString(WatermarkContextKeys.SYNC_KEY, metadata.layerKey());
-        jobContext.putString(WatermarkContextKeys.SOURCE_TABLE, metadata.qualifiedSourceTable());
-        jobContext.put(CTX_ORPHAN_CHECK_RAN, runOrphanCheck);
+        jobContext.putString(WatermarkContextKeys.SYNC_KEY, syncKey);
+        jobContext.putString(WatermarkContextKeys.SOURCE_TABLE, tableConfig.getSourceTable());
+        jobContext.put(WatermarkContextKeys.ORPHAN_CHECK_RAN, runOrphanCheck);
 
         if (maxUpdatedAt != null) {
-            jobContext.putString(CTX_PROPOSED_WATERMARK, maxUpdatedAt.toString());
+            jobContext.putString(WatermarkContextKeys.PROPOSED_WATERMARK, maxUpdatedAt.toString());
         }
 
-        // PROCESS (UPSERT) only when there is a delta; orphans were already deleted above.
         boolean hasDelta = !deltaBboxes.isEmpty();
         if (!hasDelta && affectedBboxes.isEmpty()) {
             log.info("No changes detected in {} (watermark={})",
-                    metadata.qualifiedSourceTable(), watermark);
-            jobContext.put(CTX_HAS_CHANGES, false);
+                    tableConfig.getSourceTable(), watermark);
+            jobContext.put(WatermarkContextKeys.HAS_CHANGES, false);
         } else if (!hasDelta) {
             log.info("Only orphan deletions in {} — skipping UPSERT (watermark={})",
-                    metadata.qualifiedSourceTable(), watermark);
-            jobContext.put(CTX_HAS_CHANGES, false);
-            jobContext.put(CTX_AFFECTED_BBOXES, affectedBboxes);
-            jobContext.put(CTX_LAYER_NAME, metadata.layerName());
+                    tableConfig.getSourceTable(), watermark);
+            jobContext.put(WatermarkContextKeys.HAS_CHANGES, false);
+            jobContext.put(WatermarkContextKeys.AFFECTED_BBOXES, affectedBboxes);
+            jobContext.put(WatermarkContextKeys.LAYER_NAME, tableConfig.getLayerName());
         } else {
             log.info("Detected {} delta areas in {} (watermark={}, proposed={})",
-                    deltaBboxes.size(), metadata.qualifiedSourceTable(), watermark, maxUpdatedAt);
-            jobContext.put(CTX_HAS_CHANGES, true);
-            jobContext.put(CTX_AFFECTED_BBOXES, affectedBboxes);
-            jobContext.put(CTX_LAYER_NAME, metadata.layerName());
+                    deltaBboxes.size(), tableConfig.getSourceTable(), watermark, maxUpdatedAt);
+            jobContext.put(WatermarkContextKeys.HAS_CHANGES, true);
+            jobContext.put(WatermarkContextKeys.AFFECTED_BBOXES, affectedBboxes);
+            jobContext.put(WatermarkContextKeys.LAYER_NAME, tableConfig.getLayerName());
         }
+    }
+
+    static void requireUpdatedAtColumn(JobTableConfig tableConfig) {
+        String column = tableConfig.getUpdatedAtColumn();
+        if (column == null || column.isBlank()) {
+            throw new IllegalArgumentException(
+                    "WATERMARK strategy requires updated-at-column for table "
+                            + tableConfig.getSourceTable());
+        }
+    }
+
+    static String requireSyncKey(JobTableConfig tableConfig) {
+        String syncKey = tableConfig.getSyncKey();
+        if (syncKey == null || syncKey.isBlank()) {
+            throw new IllegalArgumentException(
+                    "WATERMARK strategy requires sync-key for table "
+                            + tableConfig.getSourceTable());
+        }
+        return syncKey.trim();
     }
 
     boolean shouldRunOrphanCheck(SyncState state) {
@@ -110,24 +130,21 @@ public class LayerChangeDetectionService {
         if (lastCheck == null) {
             return true;
         }
-        return lastCheck.isBefore(Instant.now().minus(ORPHAN_CHECK_INTERVAL));
+        return lastCheck.isBefore(Instant.now().minus(WatermarkSettings.ORPHAN_CHECK_INTERVAL));
     }
 
-    /**
-     * Collects delta bboxes and returns the {@code MAX(updated_at)} found (or null).
-     */
     Instant collectDeltaBboxes(JdbcTemplate sourceJdbc,
-                               LayerTableMetadata metadata,
+                               JobTableConfig tableConfig,
                                Instant watermark,
                                List<String> bboxes) {
-        String pk = metadata.primaryKeyColumn();
-        String geom = metadata.geometryColumn();
-        String updatedAt = metadata.updatedAtSourceColumn();
-        String table = metadata.qualifiedSourceTable();
-        int srid = metadata.srid();
+        String pk = tableConfig.getPrimaryKey();
+        String geom = tableConfig.getGeometryColumn();
+        String updatedAt = tableConfig.getUpdatedAtColumn().trim();
+        String table = tableConfig.getSourceTable();
+        int srid = tableConfig.getSrid();
 
         String validGeomFilter = GeometrySql.validNonEmptyPredicate(geom);
-        String configWhere = metadata.whereClause();
+        String configWhere = tableConfig.getWhereClause();
         boolean hasConfigWhere = configWhere != null
                 && !configWhere.isBlank()
                 && !"1=1".equals(configWhere.trim());
@@ -184,38 +201,40 @@ public class LayerChangeDetectionService {
     }
 
     private List<String> deleteOrphans(JdbcTemplate sourceJdbc,
+                                       JdbcTemplate targetJdbc,
                                        JdbcTemplate geoTargetJdbc,
-                                       LayerTableMetadata metadata) {
-        Set<Object> sourceIds = fetchSourceIds(sourceJdbc, metadata);
-        MapIdsAndBboxes target = fetchTargetIdsAndBboxes(geoTargetJdbc, metadata);
+                                       JobTableConfig tableConfig) {
+        Set<Object> sourceIds = fetchSourceIds(sourceJdbc, tableConfig);
+        TargetIdsAndBboxes geoTarget = fetchTargetIdsAndBboxes(geoTargetJdbc, tableConfig);
 
-        Set<Object> orphans = new HashSet<>(target.ids());
+        Set<Object> orphans = new HashSet<>(geoTarget.ids());
         orphans.removeAll(sourceIds);
 
         if (orphans.isEmpty()) {
-            log.info("Orphan check: no deleted records in {}", metadata.qualifiedTargetTable());
+            log.info("Orphan check: no deleted records for {}", tableConfig.getTargetTable());
             return List.of();
         }
 
         List<String> orphanBboxes = new ArrayList<>();
         for (Object id : orphans) {
-            String bbox = target.bboxesById().get(id);
+            String bbox = geoTarget.bboxesById().get(id);
             if (bbox != null) {
                 orphanBboxes.add(bbox);
             }
             log.warn("DELETED orphan: id={}", id);
         }
 
-        deleteRemovedRecords(geoTargetJdbc, metadata, orphans);
+        deleteRemovedRecords(targetJdbc, tableConfig, orphans);
+        deleteRemovedRecords(geoTargetJdbc, tableConfig, orphans);
         return orphanBboxes;
     }
 
-    private Set<Object> fetchSourceIds(JdbcTemplate sourceJdbc, LayerTableMetadata metadata) {
-        String pk = metadata.primaryKeyColumn();
-        String geom = metadata.geometryColumn();
-        String table = metadata.qualifiedSourceTable();
+    private Set<Object> fetchSourceIds(JdbcTemplate sourceJdbc, JobTableConfig tableConfig) {
+        String pk = tableConfig.getPrimaryKey();
+        String geom = tableConfig.getGeometryColumn();
+        String table = tableConfig.getSourceTable();
         String validGeomFilter = GeometrySql.validNonEmptyPredicate(geom);
-        String configWhere = metadata.whereClause();
+        String configWhere = tableConfig.getWhereClause();
         boolean hasConfigWhere = configWhere != null
                 && !configWhere.isBlank()
                 && !"1=1".equals(configWhere.trim());
@@ -228,19 +247,18 @@ public class LayerChangeDetectionService {
         }
 
         Set<Object> ids = new HashSet<>();
-        sourceJdbc.query(sql.toString(), rs -> {
-            ids.add(normalizeId(rs.getObject(pk)));
-        });
+        RowCallbackHandler handler = rs -> ids.add(normalizeId(rs.getObject(pk)));
+        sourceJdbc.query(sql.toString(), handler);
         log.info("Orphan check source ids: {}", ids.size());
         return ids;
     }
 
-    private MapIdsAndBboxes fetchTargetIdsAndBboxes(JdbcTemplate targetJdbc,
-                                                    LayerTableMetadata metadata) {
-        String pk = metadata.resolveTargetPrimaryKeyColumn();
-        String geom = metadata.resolveTargetGeometryColumn();
-        String table = metadata.qualifiedTargetTable();
-        int srid = metadata.srid();
+    private TargetIdsAndBboxes fetchTargetIdsAndBboxes(JdbcTemplate targetJdbc,
+                                                       JobTableConfig tableConfig) {
+        String pk = tableConfig.resolveTargetColumn(tableConfig.getPrimaryKey());
+        String geom = tableConfig.resolveTargetColumn(tableConfig.getGeometryColumn());
+        String table = tableConfig.getTargetTable();
+        int srid = tableConfig.getSrid();
         String validGeomFilter = GeometrySql.validNonEmptyPredicate(geom);
         String geom2d = GeometrySql.force2d(geom);
 
@@ -259,7 +277,7 @@ public class LayerChangeDetectionService {
         );
 
         Set<Object> ids = new HashSet<>();
-        java.util.Map<Object, String> bboxesById = new java.util.HashMap<>();
+        Map<Object, String> bboxesById = new java.util.HashMap<>();
         targetJdbc.query(sql, rs -> {
             Object id = normalizeId(rs.getObject(pk));
             ids.add(id);
@@ -270,32 +288,23 @@ public class LayerChangeDetectionService {
                     rs.getDouble("maxy")));
         });
         log.info("Orphan check target ids: {}", ids.size());
-        return new MapIdsAndBboxes(ids, bboxesById);
+        return new TargetIdsAndBboxes(ids, bboxesById);
     }
 
     private void deleteRemovedRecords(JdbcTemplate targetJdbc,
-                                      LayerTableMetadata metadata,
+                                      JobTableConfig tableConfig,
                                       Set<Object> idsToDelete) {
         if (idsToDelete.isEmpty()) {
             return;
         }
 
-        String pk = metadata.resolveTargetPrimaryKeyColumn();
-        String table = metadata.qualifiedTargetTable();
-
+        String pk = tableConfig.resolveTargetColumn(tableConfig.getPrimaryKey());
+        String table = tableConfig.getTargetTable();
         String placeholders = idsToDelete.stream().map(id -> "?").collect(Collectors.joining(","));
         String sql = String.format("DELETE FROM %s WHERE %s IN (%s)", table, pk, placeholders);
 
         int deleted = targetJdbc.update(sql, idsToDelete.toArray());
-        log.warn("Deleted {} inactive records from target: {}", deleted, idsToDelete.size());
-    }
-
-    /**
-     * SQL fragment that filters by the source update column (used by reader/partitioner).
-     * Always requires {@code IS NOT NULL}. With a watermark, restricts to the delta.
-     */
-    public static String buildUpdatedAtFilterSql(String updatedAtSourceColumn, Instant watermark) {
-        return WatermarkSql.buildUpdatedAtFilter(updatedAtSourceColumn, watermark);
+        log.warn("Deleted {} inactive records from {}: {}", deleted, table, idsToDelete.size());
     }
 
     private String formatBbox(double minX, double minY, double maxX, double maxY) {
@@ -312,6 +321,6 @@ public class LayerChangeDetectionService {
         return id.toString().trim();
     }
 
-    private record MapIdsAndBboxes(Set<Object> ids, java.util.Map<Object, String> bboxesById) {
+    private record TargetIdsAndBboxes(Set<Object> ids, Map<Object, String> bboxesById) {
     }
 }

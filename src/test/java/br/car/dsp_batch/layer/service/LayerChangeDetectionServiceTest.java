@@ -3,8 +3,8 @@ package br.car.dsp_batch.layer.service;
 import br.car.dsp_batch.layer.metadata.ColumnMetadata;
 import br.car.dsp_batch.layer.metadata.LayerTableMetadata;
 import br.car.dsp_batch.layer.metadata.QualifiedTable;
-import br.car.dsp_batch.layer.sync.LayerSyncState;
-import br.car.dsp_batch.layer.sync.LayerSyncStateRepository;
+import br.car.dsp_batch.sync.SyncState;
+import br.car.dsp_batch.sync.SyncStateRepository;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -20,7 +20,7 @@ import static org.mockito.Mockito.mock;
 class LayerChangeDetectionServiceTest {
 
     private final LayerChangeDetectionService service =
-            new LayerChangeDetectionService(mock(LayerSyncStateRepository.class));
+            new LayerChangeDetectionService(mock(SyncStateRepository.class));
 
     @Test
     void normalizeId_ConvertsNumberToString() {
@@ -75,14 +75,14 @@ class LayerChangeDetectionServiceTest {
 
     @Test
     void shouldRunOrphanCheck_WhenWatermarkMissing() {
-        LayerSyncState state = new LayerSyncState(
+        SyncState state = new SyncState(
                 "dsp_teste", "src.teste", null, null, null, Instant.now());
         assertTrue(service.shouldRunOrphanCheck(state));
     }
 
     @Test
     void shouldRunOrphanCheck_WhenLastCheckTooOld() {
-        LayerSyncState state = new LayerSyncState(
+        SyncState state = new SyncState(
                 "dsp_teste",
                 "src.teste",
                 Instant.parse("2026-08-01T00:00:00Z"),
@@ -95,7 +95,7 @@ class LayerChangeDetectionServiceTest {
 
     @Test
     void shouldRunOrphanCheck_WhenLastCheckRecent() {
-        LayerSyncState state = new LayerSyncState(
+        SyncState state = new SyncState(
                 "dsp_teste",
                 "src.teste",
                 Instant.parse("2026-08-01T00:00:00Z"),

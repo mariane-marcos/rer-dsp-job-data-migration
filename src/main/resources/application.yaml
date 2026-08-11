@@ -120,6 +120,7 @@ batch:
     target-table: target_properties.target_property
     primary-key: source_pk
     geometry-column: source_geom
+    updated-at-column: source_updated_at
     where-clause: "1=1"
     comparison-columns:
       - source_updated_at
@@ -149,12 +150,12 @@ batch:
       # source_theme_4: target_theme_4
     layer-name: source-properties-geoserver-layer
     srid: 4326
-    change-detection-strategy: DEFAULT
+    change-detection-strategy: WATERMARK
 
   # Layers: the job creates dsp.<table> on geo-target automatically.
   # The link column becomes area_of_interest_id on the target.
   # The last-update column becomes updated_at on the target (required).
-  # Incremental watermark is stored in batch_metadata.dsp_layer_sync_state.
+  # Incremental watermark is stored in batch_metadata.dsp_sync_state.
   # Add an entry here for each layer table that must be migrated.
   # Tables without an SRID are not migrated, but you can declare srid below.
   # If the table has multiple geometry columns, the job migrates the first one found.

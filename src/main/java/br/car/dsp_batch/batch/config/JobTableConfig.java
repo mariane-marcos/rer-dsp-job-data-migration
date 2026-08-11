@@ -93,6 +93,20 @@ public interface JobTableConfig {
     }
 
     /**
+     * Source column holding the last update timestamp for {@link ChangeDetectionStrategyType#WATERMARK}.
+     */
+    default String getUpdatedAtColumn() {
+        return null;
+    }
+
+    /**
+     * Key used in {@code dsp_sync_state} for {@link ChangeDetectionStrategyType#WATERMARK}.
+     */
+    default String getSyncKey() {
+        return null;
+    }
+
+    /**
      * Start of the inclusive date interval used by date-range change detection.
      * {@code null} when the strategy does not need a date filter.
      */

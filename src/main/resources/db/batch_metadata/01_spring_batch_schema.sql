@@ -82,8 +82,8 @@ CREATE TABLE IF NOT EXISTS BATCH_JOB_EXECUTION_CONTEXT (
 		REFERENCES BATCH_JOB_EXECUTION (JOB_EXECUTION_ID)
 );
 
-CREATE TABLE IF NOT EXISTS dsp_layer_sync_state (
-	layer_key              VARCHAR(200) NOT NULL PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS dsp_sync_state (
+	sync_key               VARCHAR(200) NOT NULL PRIMARY KEY,
 	source_table           VARCHAR(300) NOT NULL,
 	watermark_updated_at   TIMESTAMPTZ,
 	last_success_at        TIMESTAMPTZ,

@@ -65,6 +65,7 @@ public class LayerTableSetupTasklet implements Tasklet {
         jobContext.putString("layerKey", config.resolveKey());
         jobContext.putString("layerJobName", jobName);
         jobContext.putString("sourceTable", metadata.qualifiedSourceTable());
+        jobContext.putString("syncKey", config.resolveKey());
 
         log.info("Target table ready: {}", metadata.qualifiedTargetTable());
         return RepeatStatus.FINISHED;
