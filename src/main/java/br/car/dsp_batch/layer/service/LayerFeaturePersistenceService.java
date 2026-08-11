@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 /**
- * Persists layer features (feições) to the geo-target database (full geometry for WMS).
+ * Persists layer features to the geo-target database (full geometry for WMS).
  */
 @Slf4j
 @Service

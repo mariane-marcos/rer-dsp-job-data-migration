@@ -3,8 +3,11 @@ package br.car.dsp_batch.layer.service;
 import br.car.dsp_batch.layer.metadata.ColumnMetadata;
 import br.car.dsp_batch.layer.metadata.LayerTableMetadata;
 import br.car.dsp_batch.layer.metadata.QualifiedTable;
+import br.car.dsp_batch.layer.sync.LayerSyncState;
+import br.car.dsp_batch.layer.sync.LayerSyncStateRepository;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
@@ -12,10 +15,12 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.mock;
 
 class LayerChangeDetectionServiceTest {
 
-    private final LayerChangeDetectionService service = new LayerChangeDetectionService();
+    private final LayerChangeDetectionService service =
+            new LayerChangeDetectionService(mock(LayerSyncStateRepository.class));
 
     @Test
     void normalizeId_ConvertsNumberToString() {
@@ -46,58 +51,59 @@ class LayerChangeDetectionServiceTest {
     }
 
     @Test
-    void joinAttributeSelectColumns_DoesNotDuplicatePrimaryKey() {
-        String columns = service.joinAttributeSelectColumns(
-                "id",
-                List.of("id", "area_of_interest_id")
+    void buildUpdatedAtFilterSql_RequiresNotNullWithoutWatermark() {
+        assertEquals(
+                "data_atualizacao IS NOT NULL",
+                LayerChangeDetectionService.buildUpdatedAtFilterSql("data_atualizacao", null)
         );
-        assertEquals("id, area_of_interest_id", columns);
     }
 
     @Test
-    void buildComparisonSql_DoesNotSelectPrimaryKeyTwice() {
-        LayerTableMetadata metadata = metadataWithSrid(4674);
-        String attributeColumns = service.joinAttributeSelectColumns(
-                "id",
-                List.of("id", "area_of_interest_id", "notes")
+    void buildUpdatedAtFilterSql_UsesSourceColumnAndInstant() {
+        Instant watermark = Instant.parse("2026-08-10T15:00:00Z");
+        String sql = LayerChangeDetectionService.buildUpdatedAtFilterSql("data_atualizacao", watermark);
+        assertEquals(
+                "data_atualizacao IS NOT NULL AND data_atualizacao > TIMESTAMP WITH TIME ZONE '2026-08-10T15:00:00Z'",
+                sql
         );
+    }
 
-        String sql = service.buildComparisonSql(
-                metadata,
-                attributeColumns,
-                "geom",
+    @Test
+    void shouldRunOrphanCheck_WhenNoState() {
+        assertTrue(service.shouldRunOrphanCheck(null));
+    }
+
+    @Test
+    void shouldRunOrphanCheck_WhenWatermarkMissing() {
+        LayerSyncState state = new LayerSyncState(
+                "dsp_teste", "src.teste", null, null, null, Instant.now());
+        assertTrue(service.shouldRunOrphanCheck(state));
+    }
+
+    @Test
+    void shouldRunOrphanCheck_WhenLastCheckTooOld() {
+        LayerSyncState state = new LayerSyncState(
+                "dsp_teste",
                 "src.teste",
-                "WHERE 1=1"
+                Instant.parse("2026-08-01T00:00:00Z"),
+                Instant.parse("2026-08-01T00:00:00Z"),
+                1L,
+                Instant.now().minus(LayerChangeDetectionService.ORPHAN_CHECK_INTERVAL).minusSeconds(1)
         );
-
-        assertFalse(sql.contains("SELECT id, id,"));
-        assertFalse(sql.contains("CollectionExtract"));
-        assertTrue(sql.contains("SELECT id, area_of_interest_id, notes,"));
-        assertTrue(sql.contains("ST_Force2D(geom) AS layer_geom_2d"));
-        assertTrue(sql.contains("ST_Area(layer_geom_2d)"));
-        assertTrue(sql.contains("ST_MakeValid(geom)"));
+        assertTrue(service.shouldRunOrphanCheck(state));
     }
 
     @Test
-    void buildComparisonSql_UsesStableAliasWhenGeometryColumnHasAnotherName() {
-        LayerTableMetadata metadata = metadataWithSrid(4674);
-        String attributeColumns = service.joinAttributeSelectColumns(
-                "id",
-                List.of("id", "area_of_interest_id")
+    void shouldRunOrphanCheck_WhenLastCheckRecent() {
+        LayerSyncState state = new LayerSyncState(
+                "dsp_teste",
+                "src.teste",
+                Instant.parse("2026-08-01T00:00:00Z"),
+                Instant.parse("2026-08-01T00:00:00Z"),
+                1L,
+                Instant.now()
         );
-
-        String sql = service.buildComparisonSql(
-                metadata,
-                attributeColumns,
-                "geometry",
-                "dsp.rivers",
-                ""
-        );
-
-        assertTrue(sql.contains("ST_Force2D(geometry) AS layer_geom_2d"));
-        assertTrue(sql.contains("ST_Area(layer_geom_2d)"));
-        assertTrue(sql.contains("ST_MakeValid(geometry)"));
-        assertFalse(sql.contains("ST_Force2D(geom)"));
+        assertFalse(service.shouldRunOrphanCheck(state));
     }
 
     private LayerTableMetadata metadataWithSrid(int srid) {
@@ -109,10 +115,12 @@ class LayerChangeDetectionServiceTest {
                 "id",
                 "geom",
                 "cod_imovel",
+                "data_atualizacao",
                 srid,
                 List.of(
                         new ColumnMetadata("id", "int8", null, null, null, false, false),
                         new ColumnMetadata("area_of_interest_id", "varchar", 80, null, null, false, false),
+                        new ColumnMetadata("data_atualizacao", "timestamptz", null, null, null, false, false),
                         new ColumnMetadata("notes", "text", null, null, null, true, false),
                         new ColumnMetadata("geom", "geometry", null, null, null, true, true)
                 ),

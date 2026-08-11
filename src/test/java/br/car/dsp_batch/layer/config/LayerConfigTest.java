@@ -41,4 +41,9 @@ class LayerConfigTest {
     void geometryColumn_ConstantMatchesTargetColumnName() {
         assertEquals("geom", LayerConfig.GEOMETRY_COLUMN);
     }
+
+    @Test
+    void updatedAtColumn_ConstantMatchesTargetColumnName() {
+        assertEquals("updated_at", LayerConfig.UPDATED_AT_COLUMN);
+    }
 }

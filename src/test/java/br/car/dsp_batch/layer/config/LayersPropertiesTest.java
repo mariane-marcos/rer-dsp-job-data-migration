@@ -9,11 +9,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class LayersPropertiesTest {
 
     @Test
-    void validate_AcceptsSourceTableAndAreaOfInterestIdColumn() {
+    void validate_AcceptsSourceTableAreaOfInterestIdAndUpdatedAtColumn() {
         LayersProperties properties = new LayersProperties();
         LayerConfig layer = new LayerConfig();
         layer.setSourceTable("src_schema.tabela");
         layer.setAreaOfInterestIdColumn("cod_imovel");
+        layer.setUpdatedAtColumn("data_atualizacao");
         properties.getLayers().add(layer);
 
         assertDoesNotThrow(properties::validate);
@@ -25,6 +26,7 @@ class LayersPropertiesTest {
         LayerConfig layer = new LayerConfig();
         layer.setLayerName("orphan-layer");
         layer.setAreaOfInterestIdColumn("cod_imovel");
+        layer.setUpdatedAtColumn("data_atualizacao");
         properties.getLayers().add(layer);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, properties::validate);
@@ -36,10 +38,23 @@ class LayersPropertiesTest {
         LayersProperties properties = new LayersProperties();
         LayerConfig layer = new LayerConfig();
         layer.setSourceTable("src_schema.tabela");
+        layer.setUpdatedAtColumn("data_atualizacao");
         properties.getLayers().add(layer);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, properties::validate);
         assertTrue(ex.getMessage().contains("area-of-interest-id-column"));
+    }
+
+    @Test
+    void validate_RejectsMissingUpdatedAtColumn() {
+        LayersProperties properties = new LayersProperties();
+        LayerConfig layer = new LayerConfig();
+        layer.setSourceTable("src_schema.tabela");
+        layer.setAreaOfInterestIdColumn("cod_imovel");
+        properties.getLayers().add(layer);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, properties::validate);
+        assertTrue(ex.getMessage().contains("updated-at-column"));
     }
 
     @Test
@@ -49,10 +64,12 @@ class LayersPropertiesTest {
         LayerConfig first = new LayerConfig();
         first.setSourceTable("schema_a.mesma");
         first.setAreaOfInterestIdColumn("cod_imovel");
+        first.setUpdatedAtColumn("data_atualizacao");
 
         LayerConfig second = new LayerConfig();
         second.setSourceTable("schema_b.mesma");
         second.setAreaOfInterestIdColumn("cod_imovel");
+        second.setUpdatedAtColumn("data_atualizacao");
 
         properties.getLayers().add(first);
         properties.getLayers().add(second);

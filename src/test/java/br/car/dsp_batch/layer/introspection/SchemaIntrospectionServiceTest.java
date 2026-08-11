@@ -40,6 +40,7 @@ class SchemaIntrospectionServiceTest {
         stubColumns(
                 column("id", "int8", false),
                 column("conservation_unit_id", "int8", false),
+                column("data_atualizacao", "timestamptz", false),
                 column("centroid", "geometry", true),
                 column("the_geom", "geometry", true)
         );
@@ -54,6 +55,8 @@ class SchemaIntrospectionServiceTest {
 
         assertEquals("centroid", metadata.geometryColumn());
         assertEquals("geom", metadata.resolveTargetGeometryColumn());
+        assertEquals("data_atualizacao", metadata.updatedAtSourceColumn());
+        assertEquals("updated_at", metadata.resolveTargetUpdatedAtColumn());
     }
 
     @Test
@@ -66,6 +69,7 @@ class SchemaIntrospectionServiceTest {
         stubColumns(
                 column("id", "int8", false),
                 column("conservation_unit_id", "int8", false),
+                column("data_atualizacao", "timestamptz", false),
                 column("centroid", "geometry", true),
                 column("the_geom", "geometry", true)
         );
@@ -90,6 +94,7 @@ class SchemaIntrospectionServiceTest {
         stubColumns(
                 column("id", "int8", false),
                 column("conservation_unit_id", "int8", false),
+                column("data_atualizacao", "timestamptz", false),
                 column("the_geom", "geometry", true)
         );
         stubPrimaryKey("id");
@@ -110,6 +115,7 @@ class SchemaIntrospectionServiceTest {
         stubColumns(
                 column("id", "int8", false),
                 column("conservation_unit_id", "int8", false),
+                column("data_atualizacao", "timestamptz", false),
                 column("name", "varchar", false),
                 column("the_geom", "geometry", true)
         );
@@ -133,6 +139,7 @@ class SchemaIntrospectionServiceTest {
         stubColumns(
                 column("id", "int8", false),
                 column("conservation_unit_id", "int8", false),
+                column("data_atualizacao", "timestamptz", false),
                 column("the_geom", "geometry", true)
         );
         stubPrimaryKey("id");
@@ -148,10 +155,59 @@ class SchemaIntrospectionServiceTest {
         assertTrue(ex.getMessage().contains("batch.layers.srid"));
     }
 
+    @Test
+    void introspect_FailsWhenUpdatedAtColumnMissing() {
+        LayerConfig config = baseConfig();
+        config.setUpdatedAtColumn("data_inexistente");
+        config.setSrid(4674);
+
+        stubTableExists();
+        stubColumns(
+                column("id", "int8", false),
+                column("conservation_unit_id", "int8", false),
+                column("data_atualizacao", "timestamptz", false),
+                column("the_geom", "geometry", true)
+        );
+        stubPrimaryKey("id");
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> service.introspect(jdbc, config)
+        );
+
+        assertTrue(ex.getMessage().contains("updated-at-column"));
+        assertTrue(ex.getMessage().contains("does not exist"));
+    }
+
+    @Test
+    void introspect_FailsWhenUpdatedAtColumnHasInvalidType() {
+        LayerConfig config = baseConfig();
+        config.setUpdatedAtColumn("name");
+        config.setSrid(4674);
+
+        stubTableExists();
+        stubColumns(
+                column("id", "int8", false),
+                column("conservation_unit_id", "int8", false),
+                column("name", "varchar", false),
+                column("the_geom", "geometry", true)
+        );
+        stubPrimaryKey("id");
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> service.introspect(jdbc, config)
+        );
+
+        assertTrue(ex.getMessage().contains("updated-at-column"));
+        assertTrue(ex.getMessage().contains("timestamp"));
+    }
+
     private LayerConfig baseConfig() {
         LayerConfig config = new LayerConfig();
         config.setSourceTable("conservation.rivers");
         config.setAreaOfInterestIdColumn("conservation_unit_id");
+        config.setUpdatedAtColumn("data_atualizacao");
         return config;
     }
 

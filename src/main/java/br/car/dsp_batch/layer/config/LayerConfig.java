@@ -6,7 +6,7 @@ import lombok.Setter;
 
 /**
  * Configuration for a geographic layer (source table) to migrate.
- * Each row in the source table is a feature (feição).
+ * Each row in the source table is a feature.
  * Target table is always {@code dsp.<source-table-name>} on geo-target.
  */
 @Getter
@@ -25,9 +25,17 @@ public class LayerConfig {
      */
     public static final String GEOMETRY_COLUMN = "geom";
 
+    /**
+     * Canonical last-update column on every migrated layer table in geo-target.
+     * Source may use another name ({@code data_atualizacao}, etc.);
+     * configure {@code updated-at-column} to choose which source column to migrate.
+     */
+    public static final String UPDATED_AT_COLUMN = "updated_at";
+
     private String sourceTable;
     private String layerName;
     private String areaOfInterestIdColumn;
+    private String updatedAtColumn;
     private String whereClause = "1=1";
     private Integer srid;
     private String primaryKey;

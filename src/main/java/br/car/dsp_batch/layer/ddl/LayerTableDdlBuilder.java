@@ -28,10 +28,30 @@ public class LayerTableDdlBuilder {
     public List<String> buildStatements(LayerTableMetadata metadata) {
         List<String> statements = new ArrayList<>();
         statements.add(buildCreateTable(metadata));
+        // Existing tables (CREATE IF NOT EXISTS) may not have updated_at yet.
+        statements.add(buildEnsureUpdatedAtColumn(metadata));
         statements.add(buildGeometryIndex(metadata));
         statements.add(buildAreaOfInterestIdIndex(metadata));
+        statements.add(buildUpdatedAtIndex(metadata));
         statements.addAll(buildSecondaryIndexes(metadata));
         return statements;
+    }
+
+    /**
+     * Ensures the canonical {@code updated_at} column exists on tables created before this rule.
+     */
+    public String buildEnsureUpdatedAtColumn(LayerTableMetadata metadata) {
+        return "ALTER TABLE " + metadata.qualifiedTargetTable()
+                + " ADD COLUMN IF NOT EXISTS "
+                + quote(LayerConfig.UPDATED_AT_COLUMN)
+                + " timestamptz";
+    }
+
+    public String buildUpdatedAtIndex(LayerTableMetadata metadata) {
+        String indexName = sanitizeIndexName(metadata.targetTable().table() + "_updated_at");
+        return "CREATE INDEX IF NOT EXISTS " + quote(indexName)
+                + " ON " + metadata.qualifiedTargetTable()
+                + " (" + quote(LayerConfig.UPDATED_AT_COLUMN) + ")";
     }
 
     public String buildCreateTable(LayerTableMetadata metadata) {
@@ -134,7 +154,7 @@ public class LayerTableDdlBuilder {
     }
 
     /**
-     * Indexes already created by {@link #buildGeometryIndex} / {@link #buildAreaOfInterestIdIndex}.
+     * Indexes already created by canonical index builders (geom / AOI / updated_at).
      */
     private boolean isRedundantWithCanonicalIndexes(LayerTableMetadata metadata,
                                                     List<String> mappedColumns,
@@ -146,7 +166,10 @@ public class LayerTableDdlBuilder {
         if (only.equals(metadata.resolveTargetGeometryColumn()) && "gist".equalsIgnoreCase(method)) {
             return true;
         }
-        return only.equals(LayerConfig.AREA_OF_INTEREST_ID_COLUMN);
+        if (only.equals(LayerConfig.AREA_OF_INTEREST_ID_COLUMN)) {
+            return true;
+        }
+        return only.equals(LayerConfig.UPDATED_AT_COLUMN);
     }
 
     private String sanitizeIndexName(String name) {

@@ -115,33 +115,56 @@ batch:
       layer-name: source-admin-areas-geoserver-layer
       srid: 4326
       change-detection-strategy: DEFAULT
-  rural-property:
-    source-table: property
-    target-table: property
-    primary-key: id
-    geometry-column: geometry
-    where-clause: "1=1"
   area-of-interest:
+    source-table: source_properties.source_property
+    target-table: target_properties.target_property
+    primary-key: source_pk
+    geometry-column: source_geom
+    where-clause: "1=1"
     comparison-columns:
-      - created_date
+      - source_updated_at
+      - source_territory_level_3_fk
+      - source_area
     persist-columns:
-      - id
-      - property_name
-    layer-name: property
+      - source_pk
+      - source_created_at
+      - source_updated_at
+      - source_territory_level_3_fk
+      - source_area
+    # business-only-persist-columns:   # Optional: remove if you have no theme KPIs
+    #   - source_theme_1
+    #   - source_theme_2
+    #   - source_theme_3
+    #   - source_theme_4
+    column-mapping:
+      source_pk: target_property_id
+      source_created_at: target_registration_date
+      source_updated_at: target_alteration_date
+      source_territory_level_3_fk: target_territory_level_3_ref
+      source_area: target_area
+      source_geom: target_property_geometry
+      # source_theme_1: target_theme_1
+      # source_theme_2: target_theme_2
+      # source_theme_3: target_theme_3
+      # source_theme_4: target_theme_4
+    layer-name: source-properties-geoserver-layer
     srid: 4326
-    change-detection-strategy: DATE_RANGE
-    start-date: 2024-01-01
-    end-date: 2024-12-31
-  # Camadas: o job cria dsp.<tabela> no geo-target automaticamente.
-  # A coluna de vinculo vira area_of_interest_id no destino.
-  # Para cada tabela de camada que for necessário migrar, adicionar aqui.
-  # Tabelas sem srid, o job não migra, mas você pode declarar a baixo.
-  # Se a tabela tiver multiplas colunas de geometria, o job irá migrar a primeira coluna de geometria. Você pode declarar a coluna de geometria que será migrada.
+    change-detection-strategy: DEFAULT
+
+  # Layers: the job creates dsp.<table> on geo-target automatically.
+  # The link column becomes area_of_interest_id on the target.
+  # The last-update column becomes updated_at on the target (required).
+  # Incremental watermark is stored in batch_metadata.dsp_layer_sync_state.
+  # Add an entry here for each layer table that must be migrated.
+  # Tables without an SRID are not migrated, but you can declare srid below.
+  # If the table has multiple geometry columns, the job migrates the first one found.
+  # You can declare which geometry column should be migrated.
   layers:
-    - source-table: <schema>.<table_name>
-      area-of-interest-id-column: <foreign_key_column>
-      # geometry-column: <geometry_column_name>
-      # srid: <srid_number>
+    - source-table: source_layers.<table_name>
+      area-of-interest-id-column: source_aoi_fk
+      updated-at-column: source_updated_at
+      # geometry-column: source_geom
+      # srid: 4326
 
 parallelization:
   jobs:

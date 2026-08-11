@@ -82,6 +82,16 @@ CREATE TABLE IF NOT EXISTS BATCH_JOB_EXECUTION_CONTEXT (
 		REFERENCES BATCH_JOB_EXECUTION (JOB_EXECUTION_ID)
 );
 
+CREATE TABLE IF NOT EXISTS dsp_layer_sync_state (
+	layer_key              VARCHAR(200) NOT NULL PRIMARY KEY,
+	source_table           VARCHAR(300) NOT NULL,
+	watermark_updated_at   TIMESTAMPTZ,
+	last_success_at        TIMESTAMPTZ,
+	last_job_execution_id  BIGINT,
+	last_orphan_check_at   TIMESTAMPTZ,
+	updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 DO $$
 BEGIN
 	IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'batch_step_execution_seq' AND relkind = 'S') THEN

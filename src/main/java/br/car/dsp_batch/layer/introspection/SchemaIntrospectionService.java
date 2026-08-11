@@ -12,8 +12,11 @@ import org.springframework.stereotype.Service;
 import javax.sql.DataSource;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 import static br.car.dsp_batch.layer.config.LayerConfig.GEOMETRY_COLUMN;
+import static br.car.dsp_batch.layer.config.LayerConfig.UPDATED_AT_COLUMN;
 
 /**
  * Automatically discovers PostGIS table structure on the source database.
@@ -54,17 +57,22 @@ public class SchemaIntrospectionService {
         String primaryKey = resolvePrimaryKey(sourceJdbc, source, columns, config.getPrimaryKey());
         String areaOfInterestIdColumn = config.getAreaOfInterestIdColumn().trim();
         requireColumn(columns, areaOfInterestIdColumn, "area-of-interest-id-column");
+        String updatedAtColumn = requireUpdatedAtColumn(columns, config.getUpdatedAtColumn());
         GeometryInfo geometryInfo = resolveGeometry(sourceJdbc, source, columns, config.getGeometryColumn());
         rejectGeomNameCollision(source, columns, geometryInfo.columnName());
+        rejectUpdatedAtNameCollision(source, columns, updatedAtColumn);
         warnIfHigherDimensional(source, geometryInfo);
         int srid = resolveSrid(sourceJdbc, source, geometryInfo, config.getSrid());
         List<IndexMetadata> indexes = fetchIndexes(sourceJdbc, source);
 
         log.info(
-                "Introspection completed for {}: pk={}, aoiLink={}, sourceGeom={} -> targetGeom={}, srid={}, columns={}",
+                "Introspection completed for {}: pk={}, aoiLink={}, sourceUpdatedAt={} -> targetUpdatedAt={}, "
+                        + "sourceGeom={} -> targetGeom={}, srid={}, columns={}",
                 source.qualified(),
                 primaryKey,
                 areaOfInterestIdColumn,
+                updatedAtColumn,
+                UPDATED_AT_COLUMN,
                 geometryInfo.columnName(),
                 GEOMETRY_COLUMN,
                 srid,
@@ -79,6 +87,7 @@ public class SchemaIntrospectionService {
                 primaryKey,
                 geometryInfo.columnName(),
                 areaOfInterestIdColumn,
+                updatedAtColumn,
                 srid,
                 columns,
                 indexes,
@@ -286,6 +295,57 @@ public class SchemaIntrospectionService {
                             + "'. Rename that attribute on the source, or set geometry-column: "
                             + GEOMETRY_COLUMN + " if that is the column to migrate "
                             + "(destination geometry is always '" + GEOMETRY_COLUMN + "').");
+        }
+    }
+
+    private static final Set<String> UPDATED_AT_UDT_NAMES = Set.of(
+            "timestamp",
+            "timestamptz",
+            "date"
+    );
+
+    private String requireUpdatedAtColumn(List<ColumnMetadata> columns, String configured) {
+        if (configured == null || configured.isBlank()) {
+            throw new IllegalStateException(
+                    "updated-at-column is required. Set batch.layers.updated-at-column "
+                            + "to the source column that should become '" + UPDATED_AT_COLUMN + "'.");
+        }
+        String name = configured.trim();
+        requireColumn(columns, name, "updated-at-column");
+        ColumnMetadata column = columns.stream()
+                .filter(col -> col.name().equals(name))
+                .findFirst()
+                .orElseThrow();
+        String udt = column.udtName() == null ? "" : column.udtName().toLowerCase(Locale.ROOT);
+        if (!UPDATED_AT_UDT_NAMES.contains(udt)) {
+            throw new IllegalStateException(
+                    "updated-at-column '" + name + "' has type '" + column.udtName()
+                            + "'. Expected timestamp, timestamptz or date "
+                            + "(it will be stored as '" + UPDATED_AT_COLUMN + "' on geo-target).");
+        }
+        return name;
+    }
+
+    /**
+     * Target always uses {@code updated_at}; reject another source attribute with that name
+     * when the configured update column itself has another name.
+     */
+    private void rejectUpdatedAtNameCollision(QualifiedTable table,
+                                              List<ColumnMetadata> columns,
+                                              String updatedAtColumnName) {
+        if (UPDATED_AT_COLUMN.equals(updatedAtColumnName)) {
+            return;
+        }
+        boolean conflict = columns.stream()
+                .anyMatch(column -> UPDATED_AT_COLUMN.equals(column.name()));
+        if (conflict) {
+            throw new IllegalStateException(
+                    "Table " + table.qualified()
+                            + " has a column named '" + UPDATED_AT_COLUMN
+                            + "' while the update column to migrate is '" + updatedAtColumnName
+                            + "'. Rename that attribute on the source, or set updated-at-column: "
+                            + UPDATED_AT_COLUMN + " if that is the column to migrate "
+                            + "(destination update column is always '" + UPDATED_AT_COLUMN + "').");
         }
     }
 

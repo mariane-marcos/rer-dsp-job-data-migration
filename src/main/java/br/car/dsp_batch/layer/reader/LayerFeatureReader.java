@@ -4,6 +4,7 @@ import br.car.dsp_batch.batch.reader.AbstractPartitionedPagingItemReader;
 import br.car.dsp_batch.geometry.GeometrySql;
 import br.car.dsp_batch.layer.dto.LayerFeatureRecord;
 import br.car.dsp_batch.layer.metadata.LayerTableMetadata;
+import br.car.dsp_batch.layer.service.LayerChangeDetectionService;
 import org.springframework.batch.item.database.Order;
 import org.springframework.batch.item.database.PagingQueryProvider;
 import org.springframework.batch.item.database.support.PostgresPagingQueryProvider;
@@ -12,13 +13,15 @@ import org.springframework.jdbc.core.RowMapper;
 import javax.sql.DataSource;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Generic paging reader for layer features (feições).
+ * Generic paging reader for layer features.
+ * When a watermark is present, only features updated after it are read.
  */
 public class LayerFeatureReader extends AbstractPartitionedPagingItemReader<LayerFeatureRecord> {
 
@@ -27,15 +30,18 @@ public class LayerFeatureReader extends AbstractPartitionedPagingItemReader<Laye
                               Long maxId,
                               int pageSize,
                               LayerTableMetadata metadata,
+                              Instant watermark,
                               String readerName) {
         super(dataSource, minId, maxId, pageSize);
         this.setName(readerName);
         boolean useIdRange = minId != null && maxId != null;
-        this.setQueryProvider(createQueryProvider(metadata, useIdRange));
+        this.setQueryProvider(createQueryProvider(metadata, useIdRange, watermark));
         this.setRowMapper(new LayerFeatureRowMapper(metadata));
     }
 
-    private PagingQueryProvider createQueryProvider(LayerTableMetadata metadata, boolean useIdRange) {
+    private PagingQueryProvider createQueryProvider(LayerTableMetadata metadata,
+                                                    boolean useIdRange,
+                                                    Instant watermark) {
         String partitionColumn = metadata.primaryKeyColumn();
         String geom = metadata.geometryColumn();
         List<String> persistColumns = new ArrayList<>(metadata.sourceNonGeometryColumnNames());
@@ -62,6 +68,12 @@ public class LayerFeatureReader extends AbstractPartitionedPagingItemReader<Laye
         StringBuilder where = new StringBuilder("WHERE ").append(geometryFilter);
         if (hasConfigWhere) {
             where.append(" AND (").append(configWhere).append(")");
+        }
+
+        String updatedAtFilter = LayerChangeDetectionService.buildUpdatedAtFilterSql(
+                metadata.updatedAtSourceColumn(), watermark);
+        if (updatedAtFilter != null) {
+            where.append(" AND ").append(updatedAtFilter);
         }
 
         if (useIdRange) {

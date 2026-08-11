@@ -11,7 +11,7 @@ class LayerTableMetadataTest {
 
     @Test
     void resolveTargetGeometryColumn_AlwaysReturnsGeom() {
-        LayerTableMetadata metadata = sampleMetadata("the_geom");
+        LayerTableMetadata metadata = sampleMetadata("the_geom", "data_atualizacao");
 
         assertEquals(LayerConfig.GEOMETRY_COLUMN, metadata.resolveTargetGeometryColumn());
         assertEquals("geom", metadata.resolveTargetColumnName("the_geom"));
@@ -20,7 +20,7 @@ class LayerTableMetadataTest {
 
     @Test
     void resolveTargetColumnName_KeepsGeomWhenSourceAlreadyCanonical() {
-        LayerTableMetadata metadata = sampleMetadata("geom");
+        LayerTableMetadata metadata = sampleMetadata("geom", "updated_at");
 
         assertEquals("geom", metadata.resolveTargetColumnName("geom"));
         assertEquals("geom", metadata.resolveSourceColumnName("geom"));
@@ -28,13 +28,30 @@ class LayerTableMetadataTest {
 
     @Test
     void resolveTargetColumnName_StillRenamesAreaOfInterestId() {
-        LayerTableMetadata metadata = sampleMetadata("the_geom");
+        LayerTableMetadata metadata = sampleMetadata("the_geom", "data_atualizacao");
 
         assertEquals("area_of_interest_id", metadata.resolveTargetColumnName("conservation_unit_id"));
         assertEquals("conservation_unit_id", metadata.resolveSourceColumnName("area_of_interest_id"));
     }
 
-    private LayerTableMetadata sampleMetadata(String geometryColumn) {
+    @Test
+    void resolveTargetColumnName_RenamesUpdatedAtLikeGeometry() {
+        LayerTableMetadata metadata = sampleMetadata("the_geom", "data_atualizacao");
+
+        assertEquals(LayerConfig.UPDATED_AT_COLUMN, metadata.resolveTargetUpdatedAtColumn());
+        assertEquals("updated_at", metadata.resolveTargetColumnName("data_atualizacao"));
+        assertEquals("data_atualizacao", metadata.resolveSourceColumnName("updated_at"));
+    }
+
+    @Test
+    void resolveTargetColumnName_KeepsUpdatedAtWhenSourceAlreadyCanonical() {
+        LayerTableMetadata metadata = sampleMetadata("the_geom", "updated_at");
+
+        assertEquals("updated_at", metadata.resolveTargetColumnName("updated_at"));
+        assertEquals("updated_at", metadata.resolveSourceColumnName("updated_at"));
+    }
+
+    private LayerTableMetadata sampleMetadata(String geometryColumn, String updatedAtColumn) {
         return new LayerTableMetadata(
                 "dsp_rivers",
                 "rivers",
@@ -43,10 +60,12 @@ class LayerTableMetadataTest {
                 "id",
                 geometryColumn,
                 "conservation_unit_id",
+                updatedAtColumn,
                 4674,
                 List.of(
                         new ColumnMetadata("id", "int8", null, null, null, false, false),
                         new ColumnMetadata("conservation_unit_id", "int8", null, null, null, false, false),
+                        new ColumnMetadata(updatedAtColumn, "timestamptz", null, null, null, false, false),
                         new ColumnMetadata(geometryColumn, "geometry", null, null, null, true, true)
                 ),
                 List.of(),

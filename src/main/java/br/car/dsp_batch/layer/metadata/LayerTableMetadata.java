@@ -7,10 +7,11 @@ import java.util.Set;
 
 import static br.car.dsp_batch.layer.config.LayerConfig.AREA_OF_INTEREST_ID_COLUMN;
 import static br.car.dsp_batch.layer.config.LayerConfig.GEOMETRY_COLUMN;
+import static br.car.dsp_batch.layer.config.LayerConfig.UPDATED_AT_COLUMN;
 
 /**
  * Metadata for a layer table discovered on the source database.
- * Rows in this table represent features (feições).
+ * Rows in this table represent features.
  */
 public record LayerTableMetadata(
         String layerKey,
@@ -20,6 +21,7 @@ public record LayerTableMetadata(
         String primaryKeyColumn,
         String geometryColumn,
         String areaOfInterestIdSourceColumn,
+        String updatedAtSourceColumn,
         int srid,
         List<ColumnMetadata> columns,
         List<IndexMetadata> indexes,
@@ -59,9 +61,20 @@ public record LayerTableMetadata(
         return GEOMETRY_COLUMN;
     }
 
+    /**
+     * Last-update column name on geo-target (always {@code updated_at}).
+     */
+    public String resolveTargetUpdatedAtColumn() {
+        return UPDATED_AT_COLUMN;
+    }
+
     public String resolveTargetColumnName(String sourceColumnName) {
         if (sourceColumnName.equals(geometryColumn)) {
             return GEOMETRY_COLUMN;
+        }
+        if (sourceColumnName.equals(updatedAtSourceColumn)
+                && !UPDATED_AT_COLUMN.equals(sourceColumnName)) {
+            return UPDATED_AT_COLUMN;
         }
         if (sourceColumnName.equals(areaOfInterestIdSourceColumn)
                 && !AREA_OF_INTEREST_ID_COLUMN.equals(sourceColumnName)) {
@@ -74,6 +87,10 @@ public record LayerTableMetadata(
         if (GEOMETRY_COLUMN.equals(targetColumnName)
                 && !GEOMETRY_COLUMN.equals(geometryColumn)) {
             return geometryColumn;
+        }
+        if (UPDATED_AT_COLUMN.equals(targetColumnName)
+                && !UPDATED_AT_COLUMN.equals(updatedAtSourceColumn)) {
+            return updatedAtSourceColumn;
         }
         if (AREA_OF_INTEREST_ID_COLUMN.equals(targetColumnName)
                 && !AREA_OF_INTEREST_ID_COLUMN.equals(areaOfInterestIdSourceColumn)) {

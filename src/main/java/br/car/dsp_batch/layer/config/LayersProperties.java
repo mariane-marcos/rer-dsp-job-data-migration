@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Geographic layers (camadas) configured via YAML ({@code batch.layers}).
+ * Geographic layers configured via YAML ({@code batch.layers}).
  */
 @ConfigurationProperties(prefix = "batch")
 @Getter
@@ -31,6 +31,7 @@ public class LayersProperties {
         for (LayerConfig layer : layers) {
             requireQualifiedTable("source-table", layer.getSourceTable());
             requireNonBlank("area-of-interest-id-column", layer.getAreaOfInterestIdColumn());
+            requireNonBlank("updated-at-column", layer.getUpdatedAtColumn());
 
             String key = layer.resolveKey();
             if (!keys.add(key)) {

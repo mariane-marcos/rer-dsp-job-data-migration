@@ -9,7 +9,9 @@ import br.car.dsp_batch.layer.dto.LayerFeatureRecord;
 import br.car.dsp_batch.layer.introspection.SchemaIntrospectionService;
 import br.car.dsp_batch.layer.metadata.LayerMetadataRegistry;
 import br.car.dsp_batch.layer.partitioner.DeferredLayerPartitioner;
+import br.car.dsp_batch.layer.listener.LayerWatermarkCommitListener;
 import br.car.dsp_batch.layer.service.LayerChangeDetectionService;
+import br.car.dsp_batch.layer.sync.LayerSyncStateRepository;
 import br.car.dsp_batch.layer.tasklet.LayerChangeDetectionTasklet;
 import br.car.dsp_batch.layer.tasklet.LayerTableSetupTasklet;
 import lombok.extern.slf4j.Slf4j;
@@ -48,6 +50,8 @@ public class LayerMigrationJobFactory {
     private final LayerTableDdlBuilder ddlBuilder;
     private final LayerMetadataRegistry registry;
     private final LayerChangeDetectionService changeDetectionService;
+    private final LayerSyncStateRepository syncStateRepository;
+    private final LayerWatermarkCommitListener watermarkCommitListener;
     private final ChangeDecider changeDecider;
     private final ParallelizationConfig parallelizationConfig;
     private final ParallelizationMonitorListener parallelizationMonitorListener;
@@ -63,6 +67,8 @@ public class LayerMigrationJobFactory {
             LayerTableDdlBuilder ddlBuilder,
             LayerMetadataRegistry registry,
             LayerChangeDetectionService changeDetectionService,
+            LayerSyncStateRepository syncStateRepository,
+            LayerWatermarkCommitListener watermarkCommitListener,
             ChangeDecider changeDecider,
             ParallelizationConfig parallelizationConfig,
             ParallelizationMonitorListener parallelizationMonitorListener,
@@ -76,6 +82,8 @@ public class LayerMigrationJobFactory {
         this.ddlBuilder = ddlBuilder;
         this.registry = registry;
         this.changeDetectionService = changeDetectionService;
+        this.syncStateRepository = syncStateRepository;
+        this.watermarkCommitListener = watermarkCommitListener;
         this.changeDecider = changeDecider;
         this.parallelizationConfig = parallelizationConfig;
         this.parallelizationMonitorListener = parallelizationMonitorListener;
@@ -93,6 +101,7 @@ public class LayerMigrationJobFactory {
         Step masterStep = buildMasterStep(namePrefix, jobName, workerStep, config);
 
         return new JobBuilder(jobName, jobRepository)
+                .listener(watermarkCommitListener)
                 .start(setupStep)
                 .next(changeDetectionStep)
                 .next(changeDecider)
@@ -164,7 +173,7 @@ public class LayerMigrationJobFactory {
         }
 
         Partitioner partitioner = new DeferredLayerPartitioner(
-                registry, config.resolveKey(), sourceDataSource);
+                registry, config.resolveKey(), sourceDataSource, syncStateRepository);
         TaskExecutor taskExecutor = createTaskExecutor(jobName, settings);
 
         TaskExecutorPartitionHandler partitionHandler = new TaskExecutorPartitionHandler();

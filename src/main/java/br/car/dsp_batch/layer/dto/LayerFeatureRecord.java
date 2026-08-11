@@ -8,7 +8,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * One feature (feição) — a single row read from a layer source table.
+ * One feature — a single row read from a layer source table.
  */
 @Getter
 @Setter
