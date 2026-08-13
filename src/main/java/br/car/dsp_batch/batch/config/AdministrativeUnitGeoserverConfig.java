@@ -2,15 +2,19 @@ package br.car.dsp_batch.batch.config;
 
 import br.car.dsp_batch.batch.config.strategy.ChangeDetectionStrategy;
 import br.car.dsp_batch.batch.config.strategy.ChangeDetectionStrategyResolver;
+import br.car.dsp_batch.batch.config.strategy.ChangeDetectionStrategyType;
 import br.car.dsp_batch.batch.dto.AdministrativeUnitDTO;
 import br.car.dsp_batch.batch.listener.GeoCacheUpdateListener;
 import br.car.dsp_batch.batch.listener.ParallelizationMonitorListener;
 import br.car.dsp_batch.batch.partitioner.ColumnRangePartitioner;
+import br.car.dsp_batch.batch.partitioner.DeferredWatermarkPartitioner;
 import br.car.dsp_batch.batch.processor.AdministrativeUnitGeoserverProcessor;
 import br.car.dsp_batch.batch.reader.AdministrativeUnitGeoserverReader;
 import br.car.dsp_batch.batch.tasklet.ChangeDetectionTasklet;
 import br.car.dsp_batch.batch.writer.AdministrativeUnitGeoserverWriter;
 import br.car.dsp_batch.service.AdministrativeUnitPersistenceService;
+import br.car.dsp_batch.sync.SyncStateRepository;
+import br.car.dsp_batch.sync.SyncWatermarkCommitListener;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.Job;
@@ -28,10 +32,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
 
 import javax.sql.DataSource;
+import java.time.Instant;
 
 /**
  * Abstract Spring Batch configuration for administrative unit Geoserver updates.
- * Subclasses supply only job-specific identity and {@link JobTableConfig}.
+ * Subclasses supply job identity and {@link JobTableConfig}.
+ * When the strategy is {@code WATERMARK}, partitioner/reader/listener use incremental sync.
  */
 public abstract class AdministrativeUnitGeoserverConfig {
 
@@ -43,6 +49,8 @@ public abstract class AdministrativeUnitGeoserverConfig {
     protected final GeoCacheUpdateListener geoCacheUpdateListener;
     protected final ChangeDetectionStrategyResolver strategyResolver;
     protected final AdministrativeUnitPersistenceService persistenceService;
+    protected final SyncStateRepository syncStateRepository;
+    protected final SyncWatermarkCommitListener syncWatermarkCommitListener;
 
     protected AdministrativeUnitGeoserverConfig(
             ParallelizationConfig parallelizationConfig,
@@ -50,13 +58,17 @@ public abstract class AdministrativeUnitGeoserverConfig {
             ChangeDecider changeDecider,
             GeoCacheUpdateListener geoCacheUpdateListener,
             ChangeDetectionStrategyResolver strategyResolver,
-            AdministrativeUnitPersistenceService persistenceService) {
+            AdministrativeUnitPersistenceService persistenceService,
+            SyncStateRepository syncStateRepository,
+            SyncWatermarkCommitListener syncWatermarkCommitListener) {
         this.parallelizationConfig = parallelizationConfig;
         this.parallelizationMonitorListener = parallelizationMonitorListener;
         this.changeDecider = changeDecider;
         this.geoCacheUpdateListener = geoCacheUpdateListener;
         this.strategyResolver = strategyResolver;
         this.persistenceService = persistenceService;
+        this.syncStateRepository = syncStateRepository;
+        this.syncWatermarkCommitListener = syncWatermarkCommitListener;
     }
 
     /** Unique Spring Batch job name. */
@@ -71,15 +83,19 @@ public abstract class AdministrativeUnitGeoserverConfig {
     protected Job buildJob(JobRepository jobRepository,
                            Step changeDetectionStep,
                            Step masterStep) {
-        return new JobBuilder(jobName(), jobRepository)
+        var jobBuilder = new JobBuilder(jobName(), jobRepository)
                 .start(changeDetectionStep)
                 .next(changeDecider)
                 .on("PROCESS").to(masterStep)
                 .from(changeDecider).on("SKIP").end()
                 .from(changeDecider).on("*").end()
                 .end()
-                .listener(geoCacheUpdateListener)
-                .build();
+                .listener(geoCacheUpdateListener);
+
+        if (usesWatermarkStrategy()) {
+            jobBuilder = jobBuilder.listener(syncWatermarkCommitListener);
+        }
+        return jobBuilder.build();
     }
 
     protected Step buildChangeDetectionStep(JobRepository jobRepository,
@@ -150,6 +166,10 @@ public abstract class AdministrativeUnitGeoserverConfig {
 
     protected Partitioner buildPartitioner(DataSource sourceDataSource) {
         JobTableConfig tableConfig = tableConfig();
+        if (usesWatermarkStrategy()) {
+            return new DeferredWatermarkPartitioner(
+                    sourceDataSource, tableConfig, syncStateRepository);
+        }
         String where = "1=1".equals(tableConfig.getWhereClause()) ? null : tableConfig.getWhereClause();
         return new ColumnRangePartitioner(
                 sourceDataSource,
@@ -164,12 +184,30 @@ public abstract class AdministrativeUnitGeoserverConfig {
                                                             Long maxId) {
         ParallelizationConfig.ParallelizationSettings settings =
                 parallelizationConfig.getJobSettings(jobName());
+        JobTableConfig tableConfig = tableConfig();
+
+        if (usesWatermarkStrategy()) {
+            Instant watermark = syncStateRepository
+                    .findWatermark(tableConfig.getSyncKey())
+                    .orElse(null);
+            return new AdministrativeUnitGeoserverReader(
+                    sourceDataSource,
+                    minId,
+                    maxId,
+                    settings.getPageSize(),
+                    tableConfig,
+                    watermark,
+                    tableConfig.getUpdatedAtColumn(),
+                    namePrefix() + "GeoserverReader"
+            );
+        }
+
         return new AdministrativeUnitGeoserverReader(
                 sourceDataSource,
                 minId,
                 maxId,
                 settings.getPageSize(),
-                tableConfig(),
+                tableConfig,
                 namePrefix() + "GeoserverReader"
         );
     }
@@ -180,5 +218,9 @@ public abstract class AdministrativeUnitGeoserverConfig {
 
     protected ItemWriter<AdministrativeUnitDTO> buildWriter() {
         return new AdministrativeUnitGeoserverWriter(persistenceService, tableConfig());
+    }
+
+    protected boolean usesWatermarkStrategy() {
+        return tableConfig().getChangeDetectionStrategy() == ChangeDetectionStrategyType.WATERMARK;
     }
 }

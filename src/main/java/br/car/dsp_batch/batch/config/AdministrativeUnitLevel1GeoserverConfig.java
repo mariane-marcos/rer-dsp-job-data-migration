@@ -6,6 +6,8 @@ import br.car.dsp_batch.batch.listener.GeoCacheUpdateListener;
 import br.car.dsp_batch.batch.listener.ParallelizationMonitorListener;
 import br.car.dsp_batch.batch.reader.AdministrativeUnitGeoserverReader;
 import br.car.dsp_batch.service.AdministrativeUnitPersistenceService;
+import br.car.dsp_batch.sync.SyncStateRepository;
+import br.car.dsp_batch.sync.SyncWatermarkCommitListener;
 import org.springframework.batch.core.Job;
 import org.springframework.batch.core.Step;
 import org.springframework.batch.core.configuration.annotation.StepScope;
@@ -24,7 +26,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import javax.sql.DataSource;
 
 /**
- * Administrative Unit Level 1 (e.g. country / top-level region).
+ * Administrative Unit Level 1 (e.g. continent / top-level region).
  */
 @Configuration
 public class AdministrativeUnitLevel1GeoserverConfig extends AdministrativeUnitGeoserverConfig {
@@ -41,9 +43,12 @@ public class AdministrativeUnitLevel1GeoserverConfig extends AdministrativeUnitG
             GeoCacheUpdateListener geoCacheUpdateListener,
             ChangeDetectionStrategyResolver strategyResolver,
             AdministrativeUnitPersistenceService persistenceService,
+            SyncStateRepository syncStateRepository,
+            SyncWatermarkCommitListener syncWatermarkCommitListener,
             @Qualifier("adminUnitLevel1TableConfig") JobTableConfig tableConfig) {
         super(parallelizationConfig, parallelizationMonitorListener, changeDecider,
-                geoCacheUpdateListener, strategyResolver, persistenceService);
+                geoCacheUpdateListener, strategyResolver, persistenceService,
+                syncStateRepository, syncWatermarkCommitListener);
         this.tableConfig = tableConfig;
     }
 

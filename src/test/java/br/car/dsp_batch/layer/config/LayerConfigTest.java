@@ -2,6 +2,8 @@ package br.car.dsp_batch.layer.config;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class LayerConfigTest {
@@ -33,17 +35,35 @@ class LayerConfigTest {
     }
 
     @Test
-    void areaOfInterestIdColumn_ConstantMatchesTargetColumnName() {
+    void canonicalConstants_MatchTargetColumnNames() {
+        assertEquals("id", LayerConfig.ID_COLUMN);
         assertEquals("area_of_interest_id", LayerConfig.AREA_OF_INTEREST_ID_COLUMN);
-    }
-
-    @Test
-    void geometryColumn_ConstantMatchesTargetColumnName() {
         assertEquals("geom", LayerConfig.GEOMETRY_COLUMN);
+        assertEquals("updated_at", LayerConfig.UPDATED_AT_COLUMN);
+        assertEquals("label", LayerConfig.LABEL_COLUMN);
     }
 
     @Test
-    void updatedAtColumn_ConstantMatchesTargetColumnName() {
-        assertEquals("updated_at", LayerConfig.UPDATED_AT_COLUMN);
+    void resolveMigratedSourceColumns_IncludesRequiredAndExtras() {
+        LayerConfig config = new LayerConfig();
+        config.setPrimaryKey("source_pk");
+        config.setAreaOfInterestIdColumn("source_aoi_fk");
+        config.setUpdatedAtColumn("source_updated_at");
+        config.setLabelColumn("source_name");
+        config.setGeometryColumn("source_geom");
+        config.setPersistColumns(List.of("codigo", "area_ha"));
+
+        assertEquals(
+                List.of(
+                        "source_pk",
+                        "source_aoi_fk",
+                        "source_updated_at",
+                        "source_name",
+                        "source_geom",
+                        "codigo",
+                        "area_ha"
+                ),
+                config.resolveMigratedSourceColumns()
+        );
     }
 }

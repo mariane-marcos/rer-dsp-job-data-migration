@@ -11,7 +11,7 @@ class LayerTableMetadataTest {
 
     @Test
     void resolveTargetGeometryColumn_AlwaysReturnsGeom() {
-        LayerTableMetadata metadata = sampleMetadata("the_geom", "data_atualizacao");
+        LayerTableMetadata metadata = sampleMetadata("the_geom", "data_atualizacao", "nome");
 
         assertEquals(LayerConfig.GEOMETRY_COLUMN, metadata.resolveTargetGeometryColumn());
         assertEquals("geom", metadata.resolveTargetColumnName("the_geom"));
@@ -19,16 +19,17 @@ class LayerTableMetadataTest {
     }
 
     @Test
-    void resolveTargetColumnName_KeepsGeomWhenSourceAlreadyCanonical() {
-        LayerTableMetadata metadata = sampleMetadata("geom", "updated_at");
+    void resolveTargetPrimaryKey_AlwaysReturnsId() {
+        LayerTableMetadata metadata = sampleMetadata("the_geom", "data_atualizacao", "nome");
 
-        assertEquals("geom", metadata.resolveTargetColumnName("geom"));
-        assertEquals("geom", metadata.resolveSourceColumnName("geom"));
+        assertEquals("id", metadata.resolveTargetPrimaryKeyColumn());
+        assertEquals("id", metadata.resolveTargetColumnName("source_pk"));
+        assertEquals("source_pk", metadata.resolveSourceColumnName("id"));
     }
 
     @Test
     void resolveTargetColumnName_StillRenamesAreaOfInterestId() {
-        LayerTableMetadata metadata = sampleMetadata("the_geom", "data_atualizacao");
+        LayerTableMetadata metadata = sampleMetadata("the_geom", "data_atualizacao", "nome");
 
         assertEquals("area_of_interest_id", metadata.resolveTargetColumnName("conservation_unit_id"));
         assertEquals("conservation_unit_id", metadata.resolveSourceColumnName("area_of_interest_id"));
@@ -36,7 +37,7 @@ class LayerTableMetadataTest {
 
     @Test
     void resolveTargetColumnName_RenamesUpdatedAtLikeGeometry() {
-        LayerTableMetadata metadata = sampleMetadata("the_geom", "data_atualizacao");
+        LayerTableMetadata metadata = sampleMetadata("the_geom", "data_atualizacao", "nome");
 
         assertEquals(LayerConfig.UPDATED_AT_COLUMN, metadata.resolveTargetUpdatedAtColumn());
         assertEquals("updated_at", metadata.resolveTargetColumnName("data_atualizacao"));
@@ -44,28 +45,42 @@ class LayerTableMetadataTest {
     }
 
     @Test
-    void resolveTargetColumnName_KeepsUpdatedAtWhenSourceAlreadyCanonical() {
-        LayerTableMetadata metadata = sampleMetadata("the_geom", "updated_at");
+    void resolveTargetColumnName_RenamesLabel() {
+        LayerTableMetadata metadata = sampleMetadata("the_geom", "data_atualizacao", "nome");
 
-        assertEquals("updated_at", metadata.resolveTargetColumnName("updated_at"));
-        assertEquals("updated_at", metadata.resolveSourceColumnName("updated_at"));
+        assertEquals(LayerConfig.LABEL_COLUMN, metadata.resolveTargetLabelColumn());
+        assertEquals("label", metadata.resolveTargetColumnName("nome"));
+        assertEquals("nome", metadata.resolveSourceColumnName("label"));
     }
 
-    private LayerTableMetadata sampleMetadata(String geometryColumn, String updatedAtColumn) {
+    @Test
+    void resolveTargetColumnName_KeepsExtraColumns() {
+        LayerTableMetadata metadata = sampleMetadata("the_geom", "data_atualizacao", "nome");
+
+        assertEquals("codigo", metadata.resolveTargetColumnName("codigo"));
+        assertEquals("codigo", metadata.resolveSourceColumnName("codigo"));
+    }
+
+    private LayerTableMetadata sampleMetadata(String geometryColumn,
+                                              String updatedAtColumn,
+                                              String labelColumn) {
         return new LayerTableMetadata(
                 "dsp_rivers",
                 "rivers",
                 new QualifiedTable("conservation", "rivers"),
                 new QualifiedTable("dsp", "rivers"),
-                "id",
+                "source_pk",
                 geometryColumn,
                 "conservation_unit_id",
                 updatedAtColumn,
+                labelColumn,
                 4674,
                 List.of(
-                        new ColumnMetadata("id", "int8", null, null, null, false, false),
+                        new ColumnMetadata("source_pk", "int8", null, null, null, false, false),
                         new ColumnMetadata("conservation_unit_id", "int8", null, null, null, false, false),
+                        new ColumnMetadata(labelColumn, "varchar", 255, null, null, true, false),
                         new ColumnMetadata(updatedAtColumn, "timestamptz", null, null, null, false, false),
+                        new ColumnMetadata("codigo", "varchar", 40, null, null, true, false),
                         new ColumnMetadata(geometryColumn, "geometry", null, null, null, true, true)
                 ),
                 List.of(),

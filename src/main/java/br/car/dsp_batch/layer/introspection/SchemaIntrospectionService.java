@@ -11,19 +11,32 @@ import org.springframework.stereotype.Service;
 
 import javax.sql.DataSource;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
+import static br.car.dsp_batch.layer.config.LayerConfig.AREA_OF_INTEREST_ID_COLUMN;
 import static br.car.dsp_batch.layer.config.LayerConfig.GEOMETRY_COLUMN;
+import static br.car.dsp_batch.layer.config.LayerConfig.ID_COLUMN;
+import static br.car.dsp_batch.layer.config.LayerConfig.LABEL_COLUMN;
 import static br.car.dsp_batch.layer.config.LayerConfig.UPDATED_AT_COLUMN;
 
 /**
- * Automatically discovers PostGIS table structure on the source database.
+ * Discovers PostGIS table structure on the source database and selects only
+ * the columns declared in the layer contract for migration.
  */
 @Slf4j
 @Service
 public class SchemaIntrospectionService {
+
+    private static final Set<String> UPDATED_AT_UDT_NAMES = Set.of(
+            "timestamp",
+            "timestamptz",
+            "date"
+    );
 
     public boolean tableExists(JdbcTemplate jdbc, QualifiedTable table) {
         Integer count = jdbc.queryForObject(
@@ -48,35 +61,61 @@ public class SchemaIntrospectionService {
                     "Source table not found: " + source.qualified());
         }
 
-        List<ColumnMetadata> columns = fetchColumns(sourceJdbc, source);
-        if (columns.isEmpty()) {
+        List<ColumnMetadata> allColumns = fetchColumns(sourceJdbc, source);
+        if (allColumns.isEmpty()) {
             throw new IllegalStateException(
                     "Source table has no columns: " + source.qualified());
         }
 
-        String primaryKey = resolvePrimaryKey(sourceJdbc, source, columns, config.getPrimaryKey());
-        String areaOfInterestIdColumn = config.getAreaOfInterestIdColumn().trim();
-        requireColumn(columns, areaOfInterestIdColumn, "area-of-interest-id-column");
-        String updatedAtColumn = requireUpdatedAtColumn(columns, config.getUpdatedAtColumn());
-        GeometryInfo geometryInfo = resolveGeometry(sourceJdbc, source, columns, config.getGeometryColumn());
-        rejectGeomNameCollision(source, columns, geometryInfo.columnName());
-        rejectUpdatedAtNameCollision(source, columns, updatedAtColumn);
+        String primaryKey = requireConfiguredColumn(
+                allColumns, config.getPrimaryKey(), "primary-key");
+        String areaOfInterestIdColumn = requireConfiguredColumn(
+                allColumns, config.getAreaOfInterestIdColumn(), "area-of-interest-id-column");
+        String updatedAtColumn = requireUpdatedAtColumn(allColumns, config.getUpdatedAtColumn());
+        String labelColumn = requireConfiguredColumn(
+                allColumns, config.getLabelColumn(), "label-column");
+        GeometryInfo geometryInfo = resolveGeometry(
+                sourceJdbc, source, allColumns, config.getGeometryColumn());
+
+        List<String> persistColumns = normalizePersistColumns(config.getPersistColumns());
+        validatePersistColumnsExist(allColumns, persistColumns);
+        rejectCanonicalTargetNameCollisions(source, allColumns, primaryKey, areaOfInterestIdColumn,
+                updatedAtColumn, labelColumn, geometryInfo.columnName(), persistColumns);
+
         warnIfHigherDimensional(source, geometryInfo);
         int srid = resolveSrid(sourceJdbc, source, geometryInfo, config.getSrid());
-        List<IndexMetadata> indexes = fetchIndexes(sourceJdbc, source);
 
-        log.info(
-                "Introspection completed for {}: pk={}, aoiLink={}, sourceUpdatedAt={} -> targetUpdatedAt={}, "
-                        + "sourceGeom={} -> targetGeom={}, srid={}, columns={}",
-                source.qualified(),
+        List<ColumnMetadata> migratedColumns = selectMigratedColumns(
+                allColumns,
                 primaryKey,
                 areaOfInterestIdColumn,
                 updatedAtColumn,
+                labelColumn,
+                geometryInfo.columnName(),
+                persistColumns
+        );
+        List<IndexMetadata> indexes = filterIndexes(
+                fetchIndexes(sourceJdbc, source),
+                migratedColumns
+        );
+
+        log.info(
+                "Introspection completed for {}: pk={} -> {}, aoiLink={} -> {}, "
+                        + "sourceUpdatedAt={} -> {}, label={} -> {}, sourceGeom={} -> {}, "
+                        + "srid={}, migratedColumns={}",
+                source.qualified(),
+                primaryKey,
+                ID_COLUMN,
+                areaOfInterestIdColumn,
+                AREA_OF_INTEREST_ID_COLUMN,
+                updatedAtColumn,
                 UPDATED_AT_COLUMN,
+                labelColumn,
+                LABEL_COLUMN,
                 geometryInfo.columnName(),
                 GEOMETRY_COLUMN,
                 srid,
-                columns.size()
+                migratedColumns.size()
         );
 
         return new LayerTableMetadata(
@@ -88,8 +127,9 @@ public class SchemaIntrospectionService {
                 geometryInfo.columnName(),
                 areaOfInterestIdColumn,
                 updatedAtColumn,
+                labelColumn,
                 srid,
-                columns,
+                migratedColumns,
                 indexes,
                 config.getWhereClause()
         );
@@ -132,115 +172,163 @@ public class SchemaIntrospectionService {
         );
     }
 
-    private String resolvePrimaryKey(JdbcTemplate jdbc,
-                                     QualifiedTable table,
-                                     List<ColumnMetadata> columns,
-                                     String override) {
-        if (override != null && !override.isBlank()) {
-            requireColumn(columns, override.trim(), "primary-key");
-            return override.trim();
+    private List<ColumnMetadata> selectMigratedColumns(List<ColumnMetadata> allColumns,
+                                                       String primaryKey,
+                                                       String areaOfInterestIdColumn,
+                                                       String updatedAtColumn,
+                                                       String labelColumn,
+                                                       String geometryColumn,
+                                                       List<String> persistColumns) {
+        Map<String, ColumnMetadata> byName = new LinkedHashMap<>();
+        for (ColumnMetadata column : allColumns) {
+            byName.put(column.name(), column);
         }
 
-        List<String> pkColumns = jdbc.query(
-                """
-                SELECT kcu.column_name
-                FROM information_schema.table_constraints tc
-                JOIN information_schema.key_column_usage kcu
-                  ON tc.constraint_name = kcu.constraint_name
-                 AND tc.table_schema = kcu.table_schema
-                 AND tc.table_name = kcu.table_name
-                WHERE tc.constraint_type = 'PRIMARY KEY'
-                  AND tc.table_schema = ?
-                  AND tc.table_name = ?
-                ORDER BY kcu.ordinal_position
-                """,
-                (rs, rowNum) -> rs.getString("column_name"),
-                table.schema(),
-                table.table()
+        List<String> orderedNames = new ArrayList<>();
+        orderedNames.add(primaryKey);
+        orderedNames.add(areaOfInterestIdColumn);
+        orderedNames.add(labelColumn);
+        orderedNames.add(updatedAtColumn);
+        orderedNames.addAll(persistColumns);
+        orderedNames.add(geometryColumn);
+
+        Set<String> seen = new LinkedHashSet<>();
+        List<ColumnMetadata> selected = new ArrayList<>();
+        for (String name : orderedNames) {
+            if (!seen.add(name)) {
+                continue;
+            }
+            ColumnMetadata column = byName.get(name);
+            if (column == null) {
+                throw new IllegalStateException(
+                        "Configured column '" + name + "' was not found during migration selection.");
+            }
+            selected.add(column);
+        }
+        return selected;
+    }
+
+    private List<String> normalizePersistColumns(List<String> persistColumns) {
+        if (persistColumns == null || persistColumns.isEmpty()) {
+            return List.of();
+        }
+        List<String> normalized = new ArrayList<>();
+        for (String column : persistColumns) {
+            if (column != null && !column.isBlank()) {
+                normalized.add(column.trim());
+            }
+        }
+        return normalized;
+    }
+
+    private void validatePersistColumnsExist(List<ColumnMetadata> columns, List<String> persistColumns) {
+        for (String column : persistColumns) {
+            requireColumn(columns, column, "persist-columns");
+        }
+    }
+
+    /**
+     * Rejects source attributes that would collide with canonical target names
+     * when those attributes are not themselves the mapped source for that role.
+     */
+    private void rejectCanonicalTargetNameCollisions(QualifiedTable table,
+                                                     List<ColumnMetadata> allColumns,
+                                                     String primaryKey,
+                                                     String areaOfInterestIdColumn,
+                                                     String updatedAtColumn,
+                                                     String labelColumn,
+                                                     String geometryColumn,
+                                                     List<String> persistColumns) {
+        rejectReservedNameCollision(table, allColumns, ID_COLUMN, primaryKey, "primary-key");
+        rejectReservedNameCollision(
+                table, allColumns, AREA_OF_INTEREST_ID_COLUMN, areaOfInterestIdColumn,
+                "area-of-interest-id-column");
+        rejectReservedNameCollision(
+                table, allColumns, UPDATED_AT_COLUMN, updatedAtColumn, "updated-at-column");
+        rejectReservedNameCollision(table, allColumns, LABEL_COLUMN, labelColumn, "label-column");
+        rejectGeomNameCollision(table, allColumns, geometryColumn);
+
+        Set<String> migrated = new LinkedHashSet<>();
+        migrated.add(primaryKey);
+        migrated.add(areaOfInterestIdColumn);
+        migrated.add(updatedAtColumn);
+        migrated.add(labelColumn);
+        migrated.add(geometryColumn);
+        migrated.addAll(persistColumns);
+
+        for (String persistColumn : persistColumns) {
+            if (LayerConfig.CANONICAL_TARGET_COLUMNS.contains(persistColumn)) {
+                throw new IllegalStateException(
+                        "persist-columns entry '" + persistColumn
+                                + "' collides with a canonical target column on "
+                                + table.qualified() + ".");
+            }
+        }
+
+        // Extra source columns that keep their name must not collide with mapped targets.
+        Set<String> mappedTargets = Set.of(
+                ID_COLUMN,
+                AREA_OF_INTEREST_ID_COLUMN,
+                UPDATED_AT_COLUMN,
+                LABEL_COLUMN,
+                GEOMETRY_COLUMN
         );
+        for (String sourceName : migrated) {
+            boolean isCanonicalSource = sourceName.equals(primaryKey)
+                    || sourceName.equals(areaOfInterestIdColumn)
+                    || sourceName.equals(updatedAtColumn)
+                    || sourceName.equals(labelColumn)
+                    || sourceName.equals(geometryColumn);
+            if (isCanonicalSource) {
+                continue;
+            }
+            if (mappedTargets.contains(sourceName)) {
+                throw new IllegalStateException(
+                        "Table " + table.qualified()
+                                + " cannot migrate extra column '" + sourceName
+                                + "' because that name is reserved for a canonical target column.");
+            }
+        }
+    }
 
-        if (pkColumns.isEmpty()) {
+    private void rejectReservedNameCollision(QualifiedTable table,
+                                             List<ColumnMetadata> columns,
+                                             String reservedTargetName,
+                                             String mappedSourceColumn,
+                                             String configField) {
+        if (reservedTargetName.equals(mappedSourceColumn)) {
+            return;
+        }
+        boolean conflict = columns.stream()
+                .anyMatch(column -> reservedTargetName.equals(column.name()));
+        if (conflict) {
             throw new IllegalStateException(
                     "Table " + table.qualified()
-                            + " has no PRIMARY KEY. Set batch.layers.primary-key.");
+                            + " has a column named '" + reservedTargetName
+                            + "' while " + configField + " is '" + mappedSourceColumn
+                            + "'. Rename that attribute on the source, or set " + configField + ": "
+                            + reservedTargetName + " if that is the column to migrate "
+                            + "(destination column is always '" + reservedTargetName + "').");
         }
-        if (pkColumns.size() > 1) {
-            throw new IllegalStateException(
-                    "Table " + table.qualified()
-                            + " has a composite primary key (" + String.join(", ", pkColumns)
-                            + "). Not supported in v1.");
-        }
-        return pkColumns.getFirst();
     }
 
     private GeometryInfo resolveGeometry(JdbcTemplate jdbc,
                                          QualifiedTable table,
                                          List<ColumnMetadata> columns,
-                                         String override) {
-        if (override != null && !override.isBlank()) {
-            String chosen = override.trim();
-            requireColumn(columns, chosen, "geometry-column");
-            requireGeometryTypedColumn(columns, chosen);
-            GeometryInfo registered = findRegisteredGeometry(jdbc, table, chosen);
-            if (registered != null) {
-                return registered;
-            }
-            return new GeometryInfo(chosen, null, null);
+                                         String configured) {
+        if (configured == null || configured.isBlank()) {
+            throw new IllegalStateException(
+                    "geometry-column is required. Set batch.layers.geometry-column "
+                            + "to the source column that should become '" + GEOMETRY_COLUMN + "'.");
         }
-
-        List<GeometryInfo> geometries = fetchRegisteredGeometries(jdbc, table);
-
-        if (geometries.isEmpty()) {
-            List<String> geometryColumns = columns.stream()
-                    .filter(ColumnMetadata::geometry)
-                    .map(ColumnMetadata::name)
-                    .toList();
-            if (geometryColumns.isEmpty()) {
-                throw new IllegalStateException(
-                        "Table " + table.qualified()
-                                + " has no geometry column. Set batch.layers.geometry-column "
-                                + "to the source column that should become '" + GEOMETRY_COLUMN + "'.");
-            }
-            if (geometryColumns.size() > 1) {
-                log.warn(
-                        "Table {} has multiple geometry columns ({}). Using '{}'. "
-                                + "Set batch.layers.geometry-column to choose another.",
-                        table.qualified(),
-                        geometryColumns,
-                        geometryColumns.getFirst()
-                );
-            }
-            return new GeometryInfo(geometryColumns.getFirst(), null, null);
+        String chosen = configured.trim();
+        requireColumn(columns, chosen, "geometry-column");
+        requireGeometryTypedColumn(columns, chosen);
+        GeometryInfo registered = findRegisteredGeometry(jdbc, table, chosen);
+        if (registered != null) {
+            return registered;
         }
-
-        if (geometries.size() > 1) {
-            log.warn(
-                    "Table {} has multiple geometry_columns entries ({}). Using '{}'. "
-                            + "Set batch.layers.geometry-column to choose another.",
-                    table.qualified(),
-                    geometries.stream().map(GeometryInfo::columnName).toList(),
-                    geometries.getFirst().columnName()
-            );
-        }
-        return geometries.getFirst();
-    }
-
-    private List<GeometryInfo> fetchRegisteredGeometries(JdbcTemplate jdbc, QualifiedTable table) {
-        return jdbc.query(
-                """
-                SELECT f_geometry_column, srid, type
-                FROM geometry_columns
-                WHERE f_table_schema = ? AND f_table_name = ?
-                ORDER BY f_geometry_column
-                """,
-                (rs, rowNum) -> new GeometryInfo(
-                        rs.getString("f_geometry_column"),
-                        (Integer) rs.getObject("srid"),
-                        rs.getString("type")
-                ),
-                table.schema(),
-                table.table()
-        );
+        return new GeometryInfo(chosen, null, null);
     }
 
     private GeometryInfo findRegisteredGeometry(JdbcTemplate jdbc,
@@ -275,10 +363,6 @@ public class SchemaIntrospectionService {
         }
     }
 
-    /**
-     * Target always uses {@code geom}; reject a non-geometry source attribute with that name
-     * when the migrated geometry column itself has another name.
-     */
     private void rejectGeomNameCollision(QualifiedTable table,
                                          List<ColumnMetadata> columns,
                                          String geometryColumnName) {
@@ -298,20 +382,8 @@ public class SchemaIntrospectionService {
         }
     }
 
-    private static final Set<String> UPDATED_AT_UDT_NAMES = Set.of(
-            "timestamp",
-            "timestamptz",
-            "date"
-    );
-
     private String requireUpdatedAtColumn(List<ColumnMetadata> columns, String configured) {
-        if (configured == null || configured.isBlank()) {
-            throw new IllegalStateException(
-                    "updated-at-column is required. Set batch.layers.updated-at-column "
-                            + "to the source column that should become '" + UPDATED_AT_COLUMN + "'.");
-        }
-        String name = configured.trim();
-        requireColumn(columns, name, "updated-at-column");
+        String name = requireConfiguredColumn(columns, configured, "updated-at-column");
         ColumnMetadata column = columns.stream()
                 .filter(col -> col.name().equals(name))
                 .findFirst()
@@ -326,35 +398,12 @@ public class SchemaIntrospectionService {
         return name;
     }
 
-    /**
-     * Target always uses {@code updated_at}; reject another source attribute with that name
-     * when the configured update column itself has another name.
-     */
-    private void rejectUpdatedAtNameCollision(QualifiedTable table,
-                                              List<ColumnMetadata> columns,
-                                              String updatedAtColumnName) {
-        if (UPDATED_AT_COLUMN.equals(updatedAtColumnName)) {
-            return;
-        }
-        boolean conflict = columns.stream()
-                .anyMatch(column -> UPDATED_AT_COLUMN.equals(column.name()));
-        if (conflict) {
-            throw new IllegalStateException(
-                    "Table " + table.qualified()
-                            + " has a column named '" + UPDATED_AT_COLUMN
-                            + "' while the update column to migrate is '" + updatedAtColumnName
-                            + "'. Rename that attribute on the source, or set updated-at-column: "
-                            + UPDATED_AT_COLUMN + " if that is the column to migrate "
-                            + "(destination update column is always '" + UPDATED_AT_COLUMN + "').");
-        }
-    }
-
     private void warnIfHigherDimensional(QualifiedTable table, GeometryInfo geometryInfo) {
         String type = geometryInfo.geometryType();
         if (type == null || type.isBlank()) {
             return;
         }
-        String upper = type.toUpperCase();
+        String upper = type.toUpperCase(Locale.ROOT);
         if (upper.contains("Z") || upper.contains("M")) {
             log.warn(
                     "Table {} geometry column '{}' is {} — Z/M will be dropped (ST_Force2D) on geo-target.",
@@ -425,13 +474,37 @@ public class SchemaIntrospectionService {
         return indexes;
     }
 
+    private List<IndexMetadata> filterIndexes(List<IndexMetadata> indexes,
+                                              List<ColumnMetadata> migratedColumns) {
+        Set<String> migratedNames = new LinkedHashSet<>();
+        for (ColumnMetadata column : migratedColumns) {
+            migratedNames.add(column.name());
+        }
+        List<IndexMetadata> filtered = new ArrayList<>();
+        for (IndexMetadata index : indexes) {
+            if (index.columns().isEmpty()) {
+                continue;
+            }
+            if (migratedNames.containsAll(index.columns())) {
+                filtered.add(index);
+            } else {
+                log.debug(
+                        "Skipping source index '{}' because not all columns are migrated: {}",
+                        index.name(),
+                        index.columns()
+                );
+            }
+        }
+        return filtered;
+    }
+
     private IndexMetadata parseIndex(IndexRow row) {
         String definition = row.indexDef();
-        boolean unique = definition.toUpperCase().contains("UNIQUE INDEX");
+        boolean unique = definition.toUpperCase(Locale.ROOT).contains("UNIQUE INDEX");
         String method = "btree";
-        if (definition.toUpperCase().contains("USING GIST")) {
+        if (definition.toUpperCase(Locale.ROOT).contains("USING GIST")) {
             method = "gist";
-        } else if (definition.toUpperCase().contains("USING GIN")) {
+        } else if (definition.toUpperCase(Locale.ROOT).contains("USING GIN")) {
             method = "gin";
         }
 
@@ -448,6 +521,18 @@ public class SchemaIntrospectionService {
         }
 
         return new IndexMetadata(row.indexName(), columns, method, unique);
+    }
+
+    private String requireConfiguredColumn(List<ColumnMetadata> columns,
+                                           String configured,
+                                           String field) {
+        if (configured == null || configured.isBlank()) {
+            throw new IllegalStateException(
+                    field + " is required. Set batch.layers." + field + ".");
+        }
+        String name = configured.trim();
+        requireColumn(columns, name, field);
+        return name;
     }
 
     private void requireColumn(List<ColumnMetadata> columns, String name, String field) {

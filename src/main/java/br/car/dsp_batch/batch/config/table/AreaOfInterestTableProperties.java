@@ -3,7 +3,6 @@ package br.car.dsp_batch.batch.config.table;
 import br.car.dsp_batch.sync.SyncKeys;
 import lombok.Getter;
 import lombok.Setter;
-import org.springframework.beans.factory.InitializingBean;
 
 import java.time.LocalDate;
 
@@ -13,15 +12,14 @@ import java.time.LocalDate;
  */
 @Getter
 @Setter
-public class AreaOfInterestTableProperties extends AdministrativeUnitTableProperties
-        implements InitializingBean {
+public class AreaOfInterestTableProperties extends AdministrativeUnitTableProperties {
 
     private LocalDate startDate;
     private LocalDate endDate;
 
     @Override
     public void afterPropertiesSet() {
-        validate();
+        super.afterPropertiesSet();
     }
 
     @Override
@@ -33,13 +31,8 @@ public class AreaOfInterestTableProperties extends AdministrativeUnitTableProper
         return SyncKeys.AREA_OF_INTEREST;
     }
 
+    /** Alias used by validation tests. */
     public void validate() {
-        if (getChangeDetectionStrategy() == br.car.dsp_batch.batch.config.strategy.ChangeDetectionStrategyType.WATERMARK) {
-            if (getUpdatedAtColumn() == null || getUpdatedAtColumn().isBlank()) {
-                throw new IllegalStateException(
-                        "batch.area-of-interest: 'updated-at-column' is required when "
-                                + "change-detection-strategy is WATERMARK");
-            }
-        }
+        validateWatermarkConfig();
     }
 }

@@ -16,20 +16,23 @@ class LayerTableDdlBuilderTest {
     private final LayerTableDdlBuilder builder = new LayerTableDdlBuilder(new PostgresTypeMapper());
 
     @Test
-    void buildCreateTable_IncludesPrimaryKeyGeometryAreaOfInterestIdAndUpdatedAt() {
+    void buildCreateTable_UsesCanonicalTargetColumns() {
         LayerTableMetadata metadata = sampleMetadata();
 
         String ddl = builder.buildCreateTable(metadata);
 
         assertTrue(ddl.contains("CREATE TABLE IF NOT EXISTS dsp.parcelas"));
-        assertTrue(ddl.contains("\"id_parcela\" varchar(80)"));
-        assertTrue(ddl.contains("\"nome\" varchar(255)"));
+        assertTrue(ddl.contains("\"id\" varchar(80)"));
+        assertTrue(ddl.contains("\"label\" varchar(255)"));
         assertTrue(ddl.contains("\"area_of_interest_id\" varchar(80)"));
         assertTrue(ddl.contains("\"updated_at\""));
+        assertTrue(ddl.contains("\"codigo\" varchar(40)"));
         assertTrue(ddl.contains("\"geom\" geometry(Geometry, 4674)"));
         assertTrue(!ddl.contains("\"the_geom\""));
         assertTrue(!ddl.contains("\"data_atualizacao\""));
-        assertTrue(ddl.contains("PRIMARY KEY (\"id_parcela\")"));
+        assertTrue(!ddl.contains("\"id_parcela\""));
+        assertTrue(!ddl.contains("\"nome\""));
+        assertTrue(ddl.contains("PRIMARY KEY (\"id\")"));
         assertTrue(!ddl.contains("\"cod_imovel\""));
     }
 
@@ -38,23 +41,18 @@ class LayerTableDdlBuilderTest {
         List<ColumnMetadata> columns = List.of(
                 new ColumnMetadata("id_parcela", "varchar", 80, null, null, false, false),
                 new ColumnMetadata("cod_imovel", "varchar", 80, null, null, false, false),
+                new ColumnMetadata("nome", "varchar", 255, null, null, true, false),
                 new ColumnMetadata("data_atualizacao", "timestamptz", null, null, null, false, false),
-                new ColumnMetadata("centroid", "geometry", null, null, null, true, true),
                 new ColumnMetadata("the_geom", "geometry", null, null, null, true, true)
         );
-        LayerTableMetadata metadata = new LayerTableMetadata(
-                "dsp_parcelas",
-                "parcelas",
-                new QualifiedTable("src", "parcelas"),
-                new QualifiedTable("dsp", "parcelas"),
+        LayerTableMetadata metadata = metadata(
                 "id_parcela",
                 "the_geom",
                 "cod_imovel",
                 "data_atualizacao",
-                4674,
+                "nome",
                 columns,
-                List.of(),
-                "1=1"
+                List.of()
         );
 
         String ddl = builder.buildCreateTable(metadata);
@@ -68,6 +66,12 @@ class LayerTableDdlBuilderTest {
     void buildEnsureUpdatedAtColumn_AddsCanonicalColumn() {
         String ddl = builder.buildEnsureUpdatedAtColumn(sampleMetadata());
         assertTrue(ddl.contains("ALTER TABLE dsp.parcelas ADD COLUMN IF NOT EXISTS \"updated_at\" timestamptz"));
+    }
+
+    @Test
+    void buildEnsureLabelColumn_AddsCanonicalColumn() {
+        String ddl = builder.buildEnsureLabelColumn(sampleMetadata());
+        assertTrue(ddl.contains("ALTER TABLE dsp.parcelas ADD COLUMN IF NOT EXISTS \"label\" varchar(255)"));
     }
 
     @Test
@@ -98,19 +102,14 @@ class LayerTableDdlBuilderTest {
 
     @Test
     void buildSecondaryIndexes_SkipsDuplicateGistOnGeometry() {
-        LayerTableMetadata metadata = new LayerTableMetadata(
-                "dsp_parcelas",
-                "parcelas",
-                new QualifiedTable("src", "parcelas"),
-                new QualifiedTable("dsp", "parcelas"),
-                "id_parcela",
-                "the_geom",
-                "cod_imovel",
-                "data_atualizacao",
-                4674,
+        LayerTableMetadata metadata = metadata(
+                sampleMetadata().primaryKeyColumn(),
+                sampleMetadata().geometryColumn(),
+                sampleMetadata().areaOfInterestIdSourceColumn(),
+                sampleMetadata().updatedAtSourceColumn(),
+                sampleMetadata().labelSourceColumn(),
                 sampleMetadata().columns(),
-                List.of(new IndexMetadata("parcelas_geo_idx", List.of("the_geom"), "gist", false)),
-                "1=1"
+                List.of(new IndexMetadata("parcelas_geo_idx", List.of("the_geom"), "gist", false))
         );
 
         List<String> indexes = builder.buildSecondaryIndexes(metadata);
@@ -120,19 +119,14 @@ class LayerTableDdlBuilderTest {
 
     @Test
     void buildSecondaryIndexes_SkipsRedundantIndexOnRenamedAreaOfInterestColumn() {
-        LayerTableMetadata metadata = new LayerTableMetadata(
-                "dsp_parcelas",
-                "parcelas",
-                new QualifiedTable("src", "parcelas"),
-                new QualifiedTable("dsp", "parcelas"),
-                "id_parcela",
-                "the_geom",
-                "cod_imovel",
-                "data_atualizacao",
-                4674,
+        LayerTableMetadata metadata = metadata(
+                sampleMetadata().primaryKeyColumn(),
+                sampleMetadata().geometryColumn(),
+                sampleMetadata().areaOfInterestIdSourceColumn(),
+                sampleMetadata().updatedAtSourceColumn(),
+                sampleMetadata().labelSourceColumn(),
                 sampleMetadata().columns(),
-                List.of(new IndexMetadata("parcelas_aoi_idx", List.of("cod_imovel"), "btree", false)),
-                "1=1"
+                List.of(new IndexMetadata("parcelas_aoi_idx", List.of("cod_imovel"), "btree", false))
         );
 
         List<String> indexes = builder.buildSecondaryIndexes(metadata);
@@ -141,71 +135,56 @@ class LayerTableDdlBuilderTest {
     }
 
     @Test
-    void buildSecondaryIndexes_KeepsIndexOnNonAoiColumn() {
-        LayerTableMetadata metadata = new LayerTableMetadata(
-                "dsp_parcelas",
-                "parcelas",
-                new QualifiedTable("src", "parcelas"),
-                new QualifiedTable("dsp", "parcelas"),
-                "id_parcela",
-                "the_geom",
-                "cod_imovel",
-                "data_atualizacao",
-                4674,
+    void buildSecondaryIndexes_KeepsIndexOnExtraColumn() {
+        LayerTableMetadata metadata = metadata(
+                sampleMetadata().primaryKeyColumn(),
+                sampleMetadata().geometryColumn(),
+                sampleMetadata().areaOfInterestIdSourceColumn(),
+                sampleMetadata().updatedAtSourceColumn(),
+                sampleMetadata().labelSourceColumn(),
                 sampleMetadata().columns(),
-                List.of(new IndexMetadata("parcelas_nome_idx", List.of("nome"), "btree", false)),
-                "1=1"
+                List.of(new IndexMetadata("parcelas_codigo_idx", List.of("codigo"), "btree", false))
         );
 
         List<String> indexes = builder.buildSecondaryIndexes(metadata);
 
         assertTrue(indexes.size() == 1);
-        assertTrue(indexes.getFirst().contains("(\"nome\")"));
+        assertTrue(indexes.getFirst().contains("(\"codigo\")"));
     }
 
     @Test
-    void buildSecondaryIndexes_MapsAoiColumnInsideCompositeIndex() {
+    void buildSecondaryIndexes_MapsCanonicalColumnsInsideCompositeIndex() {
         LayerTableMetadata metadata = sampleMetadata();
-        List<String> indexes = builder.buildSecondaryIndexes(new LayerTableMetadata(
-                metadata.layerKey(),
-                metadata.layerName(),
-                metadata.sourceTable(),
-                metadata.targetTable(),
+        List<String> indexes = builder.buildSecondaryIndexes(metadata(
                 metadata.primaryKeyColumn(),
                 metadata.geometryColumn(),
                 metadata.areaOfInterestIdSourceColumn(),
                 metadata.updatedAtSourceColumn(),
-                metadata.srid(),
+                metadata.labelSourceColumn(),
                 metadata.columns(),
                 List.of(new IndexMetadata(
                         "parcelas_aoi_nome_idx",
                         List.of("cod_imovel", "nome"),
                         "btree",
                         false
-                )),
-                metadata.whereClause()
+                ))
         ));
 
         assertTrue(indexes.size() == 1);
         assertTrue(indexes.getFirst().contains("area_of_interest_id"));
-        assertTrue(indexes.getFirst().contains("nome"));
+        assertTrue(indexes.getFirst().contains("label"));
     }
 
     @Test
     void buildSecondaryIndexes_SkipsIndexWhenMappedColumnMissingOnTarget() {
-        LayerTableMetadata metadata = new LayerTableMetadata(
-                "dsp_parcelas",
-                "parcelas",
-                new QualifiedTable("src", "parcelas"),
-                new QualifiedTable("dsp", "parcelas"),
-                "id_parcela",
-                "the_geom",
-                "cod_imovel",
-                "data_atualizacao",
-                4674,
+        LayerTableMetadata metadata = metadata(
+                sampleMetadata().primaryKeyColumn(),
+                sampleMetadata().geometryColumn(),
+                sampleMetadata().areaOfInterestIdSourceColumn(),
+                sampleMetadata().updatedAtSourceColumn(),
+                sampleMetadata().labelSourceColumn(),
                 sampleMetadata().columns(),
-                List.of(new IndexMetadata("parcelas_orphan_idx", List.of("coluna_inexistente"), "btree", false)),
-                "1=1"
+                List.of(new IndexMetadata("parcelas_orphan_idx", List.of("coluna_inexistente"), "btree", false))
         );
 
         List<String> indexes = builder.buildSecondaryIndexes(metadata);
@@ -219,9 +198,12 @@ class LayerTableDdlBuilderTest {
 
         List<String> statements = builder.buildStatements(metadata);
 
-        assertTrue(statements.size() >= 4);
+        assertTrue(statements.size() >= 5);
         assertTrue(statements.getFirst().startsWith("CREATE TABLE"));
-        assertTrue(statements.stream().anyMatch(s -> s.contains("ADD COLUMN IF NOT EXISTS")));
+        assertTrue(statements.stream().anyMatch(s -> s.contains("ADD COLUMN IF NOT EXISTS")
+                && s.contains(LayerConfig.UPDATED_AT_COLUMN)));
+        assertTrue(statements.stream().anyMatch(s -> s.contains("ADD COLUMN IF NOT EXISTS")
+                && s.contains(LayerConfig.LABEL_COLUMN)));
         assertTrue(statements.stream().anyMatch(s -> s.contains("USING GIST")));
         assertTrue(statements.stream().anyMatch(s -> s.contains(LayerConfig.AREA_OF_INTEREST_ID_COLUMN)));
         assertTrue(statements.stream().anyMatch(s -> s.contains(LayerConfig.UPDATED_AT_COLUMN)
@@ -231,23 +213,43 @@ class LayerTableDdlBuilderTest {
     private LayerTableMetadata sampleMetadata() {
         List<ColumnMetadata> columns = List.of(
                 new ColumnMetadata("id_parcela", "varchar", 80, null, null, false, false),
-                new ColumnMetadata("nome", "varchar", 255, null, null, true, false),
                 new ColumnMetadata("cod_imovel", "varchar", 80, null, null, false, false),
+                new ColumnMetadata("nome", "varchar", 255, null, null, true, false),
                 new ColumnMetadata("data_atualizacao", "timestamptz", null, null, null, false, false),
+                new ColumnMetadata("codigo", "varchar", 40, null, null, true, false),
                 new ColumnMetadata("the_geom", "geometry", null, null, null, true, true)
         );
+        return metadata(
+                "id_parcela",
+                "the_geom",
+                "cod_imovel",
+                "data_atualizacao",
+                "nome",
+                columns,
+                List.of()
+        );
+    }
+
+    private LayerTableMetadata metadata(String primaryKey,
+                                        String geometryColumn,
+                                        String aoiColumn,
+                                        String updatedAtColumn,
+                                        String labelColumn,
+                                        List<ColumnMetadata> columns,
+                                        List<IndexMetadata> indexes) {
         return new LayerTableMetadata(
                 "dsp_parcelas",
                 "parcelas",
                 new QualifiedTable("src", "parcelas"),
                 new QualifiedTable("dsp", "parcelas"),
-                "id_parcela",
-                "the_geom",
-                "cod_imovel",
-                "data_atualizacao",
+                primaryKey,
+                geometryColumn,
+                aoiColumn,
+                updatedAtColumn,
+                labelColumn,
                 4674,
                 columns,
-                List.of(),
+                indexes,
                 "1=1"
         );
     }

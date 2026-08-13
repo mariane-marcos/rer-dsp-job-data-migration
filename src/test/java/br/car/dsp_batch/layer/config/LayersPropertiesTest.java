@@ -2,6 +2,8 @@ package br.car.dsp_batch.layer.config;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -9,72 +11,95 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class LayersPropertiesTest {
 
     @Test
-    void validate_AcceptsSourceTableAreaOfInterestIdAndUpdatedAtColumn() {
+    void validate_AcceptsRequiredColumnsAndExtras() {
         LayersProperties properties = new LayersProperties();
-        LayerConfig layer = new LayerConfig();
-        layer.setSourceTable("src_schema.tabela");
-        layer.setAreaOfInterestIdColumn("cod_imovel");
-        layer.setUpdatedAtColumn("data_atualizacao");
-        properties.getLayers().add(layer);
+        properties.getLayers().add(validLayer());
 
         assertDoesNotThrow(properties::validate);
     }
 
     @Test
-    void validate_RejectsMissingSourceTable() {
-        LayersProperties properties = new LayersProperties();
-        LayerConfig layer = new LayerConfig();
-        layer.setLayerName("orphan-layer");
-        layer.setAreaOfInterestIdColumn("cod_imovel");
-        layer.setUpdatedAtColumn("data_atualizacao");
-        properties.getLayers().add(layer);
+    void validate_RejectsMissingPrimaryKey() {
+        LayerConfig layer = validLayer();
+        layer.setPrimaryKey(null);
+        LayersProperties properties = propertiesWith(layer);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, properties::validate);
-        assertTrue(ex.getMessage().contains("source-table"));
+        assertTrue(ex.getMessage().contains("primary-key"));
     }
 
     @Test
-    void validate_RejectsMissingAreaOfInterestIdColumn() {
-        LayersProperties properties = new LayersProperties();
-        LayerConfig layer = new LayerConfig();
-        layer.setSourceTable("src_schema.tabela");
-        layer.setUpdatedAtColumn("data_atualizacao");
-        properties.getLayers().add(layer);
+    void validate_RejectsMissingLabelColumn() {
+        LayerConfig layer = validLayer();
+        layer.setLabelColumn(" ");
+        LayersProperties properties = propertiesWith(layer);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, properties::validate);
-        assertTrue(ex.getMessage().contains("area-of-interest-id-column"));
+        assertTrue(ex.getMessage().contains("label-column"));
     }
 
     @Test
-    void validate_RejectsMissingUpdatedAtColumn() {
-        LayersProperties properties = new LayersProperties();
-        LayerConfig layer = new LayerConfig();
-        layer.setSourceTable("src_schema.tabela");
-        layer.setAreaOfInterestIdColumn("cod_imovel");
-        properties.getLayers().add(layer);
+    void validate_RejectsMissingGeometryColumn() {
+        LayerConfig layer = validLayer();
+        layer.setGeometryColumn(null);
+        LayersProperties properties = propertiesWith(layer);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, properties::validate);
-        assertTrue(ex.getMessage().contains("updated-at-column"));
+        assertTrue(ex.getMessage().contains("geometry-column"));
+    }
+
+    @Test
+    void validate_RejectsPersistColumnCollidingWithCanonicalName() {
+        LayerConfig layer = validLayer();
+        layer.setPersistColumns(List.of("label"));
+        LayersProperties properties = propertiesWith(layer);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, properties::validate);
+        assertTrue(ex.getMessage().contains("canonical target column"));
+    }
+
+    @Test
+    void validate_RejectsPersistColumnDuplicatingRequiredMapping() {
+        LayerConfig layer = validLayer();
+        layer.setPersistColumns(List.of("source_name"));
+        LayersProperties properties = propertiesWith(layer);
+
+        IllegalStateException ex = assertThrows(IllegalStateException.class, properties::validate);
+        assertTrue(ex.getMessage().contains("duplicates a required column"));
     }
 
     @Test
     void validate_RejectsDuplicateTargetTableNames() {
         LayersProperties properties = new LayersProperties();
 
-        LayerConfig first = new LayerConfig();
+        LayerConfig first = validLayer();
         first.setSourceTable("schema_a.mesma");
-        first.setAreaOfInterestIdColumn("cod_imovel");
-        first.setUpdatedAtColumn("data_atualizacao");
 
-        LayerConfig second = new LayerConfig();
+        LayerConfig second = validLayer();
         second.setSourceTable("schema_b.mesma");
-        second.setAreaOfInterestIdColumn("cod_imovel");
-        second.setUpdatedAtColumn("data_atualizacao");
 
         properties.getLayers().add(first);
         properties.getLayers().add(second);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, properties::validate);
         assertTrue(ex.getMessage().contains("Duplicate target table"));
+    }
+
+    private static LayersProperties propertiesWith(LayerConfig layer) {
+        LayersProperties properties = new LayersProperties();
+        properties.getLayers().add(layer);
+        return properties;
+    }
+
+    private static LayerConfig validLayer() {
+        LayerConfig layer = new LayerConfig();
+        layer.setSourceTable("src_schema.tabela");
+        layer.setPrimaryKey("source_pk");
+        layer.setAreaOfInterestIdColumn("cod_imovel");
+        layer.setUpdatedAtColumn("data_atualizacao");
+        layer.setLabelColumn("source_name");
+        layer.setGeometryColumn("source_geom");
+        layer.setPersistColumns(List.of("codigo", "area_ha"));
+        return layer;
     }
 }

@@ -5,6 +5,7 @@ import br.car.dsp_batch.layer.metadata.LayerTableMetadata;
 import br.car.dsp_batch.layer.metadata.QualifiedTable;
 import br.car.dsp_batch.sync.SyncState;
 import br.car.dsp_batch.sync.SyncStateRepository;
+import br.car.dsp_batch.sync.WatermarkChangeDetectionEngine;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -20,7 +21,8 @@ import static org.mockito.Mockito.mock;
 class LayerChangeDetectionServiceTest {
 
     private final LayerChangeDetectionService service =
-            new LayerChangeDetectionService(mock(SyncStateRepository.class));
+            new LayerChangeDetectionService(
+                    new WatermarkChangeDetectionEngine(mock(SyncStateRepository.class)));
 
     @Test
     void normalizeId_ConvertsNumberToString() {
@@ -116,10 +118,12 @@ class LayerChangeDetectionServiceTest {
                 "geom",
                 "cod_imovel",
                 "data_atualizacao",
+                "nome",
                 srid,
                 List.of(
                         new ColumnMetadata("id", "int8", null, null, null, false, false),
-                        new ColumnMetadata("area_of_interest_id", "varchar", 80, null, null, false, false),
+                        new ColumnMetadata("cod_imovel", "varchar", 80, null, null, false, false),
+                        new ColumnMetadata("nome", "varchar", 255, null, null, true, false),
                         new ColumnMetadata("data_atualizacao", "timestamptz", null, null, null, false, false),
                         new ColumnMetadata("notes", "text", null, null, null, true, false),
                         new ColumnMetadata("geom", "geometry", null, null, null, true, true)

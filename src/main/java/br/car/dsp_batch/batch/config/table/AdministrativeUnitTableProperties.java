@@ -4,6 +4,7 @@ import br.car.dsp_batch.batch.config.JobTableConfig;
 import br.car.dsp_batch.batch.config.strategy.ChangeDetectionStrategyType;
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.beans.factory.InitializingBean;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -15,7 +16,7 @@ import java.util.Map;
  */
 @Getter
 @Setter
-public class AdministrativeUnitTableProperties implements JobTableConfig {
+public class AdministrativeUnitTableProperties implements JobTableConfig, InitializingBean {
 
     private String sourceTable;
     private String targetTable;
@@ -33,6 +34,27 @@ public class AdministrativeUnitTableProperties implements JobTableConfig {
     private ChangeDetectionStrategyType changeDetectionStrategy = ChangeDetectionStrategyType.DEFAULT;
     private String updatedAtColumn;
     private String syncKey;
+
+    @Override
+    public void afterPropertiesSet() {
+        validateWatermarkConfig();
+    }
+
+    public void validateWatermarkConfig() {
+        if (getChangeDetectionStrategy() != ChangeDetectionStrategyType.WATERMARK) {
+            return;
+        }
+        if (getUpdatedAtColumn() == null || getUpdatedAtColumn().isBlank()) {
+            throw new IllegalStateException(
+                    "updated-at-column is required when change-detection-strategy is WATERMARK"
+                            + " (table=" + getSourceTable() + ")");
+        }
+        if (getSyncKey() == null || getSyncKey().isBlank()) {
+            throw new IllegalStateException(
+                    "sync-key is required when change-detection-strategy is WATERMARK"
+                            + " (table=" + getSourceTable() + ")");
+        }
+    }
 
     @Override
     public String getPartitionColumn() {

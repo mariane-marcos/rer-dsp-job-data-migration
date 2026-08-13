@@ -7,11 +7,13 @@ import java.util.Set;
 
 import static br.car.dsp_batch.layer.config.LayerConfig.AREA_OF_INTEREST_ID_COLUMN;
 import static br.car.dsp_batch.layer.config.LayerConfig.GEOMETRY_COLUMN;
+import static br.car.dsp_batch.layer.config.LayerConfig.ID_COLUMN;
+import static br.car.dsp_batch.layer.config.LayerConfig.LABEL_COLUMN;
 import static br.car.dsp_batch.layer.config.LayerConfig.UPDATED_AT_COLUMN;
 
 /**
  * Metadata for a layer table discovered on the source database.
- * Rows in this table represent features.
+ * {@code columns} contains only the columns selected for migration.
  */
 public record LayerTableMetadata(
         String layerKey,
@@ -22,6 +24,7 @@ public record LayerTableMetadata(
         String geometryColumn,
         String areaOfInterestIdSourceColumn,
         String updatedAtSourceColumn,
+        String labelSourceColumn,
         int srid,
         List<ColumnMetadata> columns,
         List<IndexMetadata> indexes,
@@ -54,53 +57,61 @@ public record LayerTableMetadata(
         return targetNonGeometryColumnNames();
     }
 
-    /**
-     * Geometry column name on geo-target (always {@code geom}).
-     */
+    /** Geometry column name on geo-target (always {@code geom}). */
     public String resolveTargetGeometryColumn() {
         return GEOMETRY_COLUMN;
     }
 
-    /**
-     * Last-update column name on geo-target (always {@code updated_at}).
-     */
+    /** Last-update column name on geo-target (always {@code updated_at}). */
     public String resolveTargetUpdatedAtColumn() {
         return UPDATED_AT_COLUMN;
     }
 
+    /** Display-name column on geo-target (always {@code label}). */
+    public String resolveTargetLabelColumn() {
+        return LABEL_COLUMN;
+    }
+
     public String resolveTargetColumnName(String sourceColumnName) {
+        if (sourceColumnName.equals(primaryKeyColumn)) {
+            return ID_COLUMN;
+        }
         if (sourceColumnName.equals(geometryColumn)) {
             return GEOMETRY_COLUMN;
         }
-        if (sourceColumnName.equals(updatedAtSourceColumn)
-                && !UPDATED_AT_COLUMN.equals(sourceColumnName)) {
+        if (sourceColumnName.equals(updatedAtSourceColumn)) {
             return UPDATED_AT_COLUMN;
         }
-        if (sourceColumnName.equals(areaOfInterestIdSourceColumn)
-                && !AREA_OF_INTEREST_ID_COLUMN.equals(sourceColumnName)) {
+        if (sourceColumnName.equals(areaOfInterestIdSourceColumn)) {
             return AREA_OF_INTEREST_ID_COLUMN;
+        }
+        if (sourceColumnName.equals(labelSourceColumn)) {
+            return LABEL_COLUMN;
         }
         return sourceColumnName;
     }
 
     public String resolveSourceColumnName(String targetColumnName) {
-        if (GEOMETRY_COLUMN.equals(targetColumnName)
-                && !GEOMETRY_COLUMN.equals(geometryColumn)) {
+        if (ID_COLUMN.equals(targetColumnName)) {
+            return primaryKeyColumn;
+        }
+        if (GEOMETRY_COLUMN.equals(targetColumnName)) {
             return geometryColumn;
         }
-        if (UPDATED_AT_COLUMN.equals(targetColumnName)
-                && !UPDATED_AT_COLUMN.equals(updatedAtSourceColumn)) {
+        if (UPDATED_AT_COLUMN.equals(targetColumnName)) {
             return updatedAtSourceColumn;
         }
-        if (AREA_OF_INTEREST_ID_COLUMN.equals(targetColumnName)
-                && !AREA_OF_INTEREST_ID_COLUMN.equals(areaOfInterestIdSourceColumn)) {
+        if (AREA_OF_INTEREST_ID_COLUMN.equals(targetColumnName)) {
             return areaOfInterestIdSourceColumn;
+        }
+        if (LABEL_COLUMN.equals(targetColumnName)) {
+            return labelSourceColumn;
         }
         return targetColumnName;
     }
 
     public String resolveTargetPrimaryKeyColumn() {
-        return resolveTargetColumnName(primaryKeyColumn);
+        return ID_COLUMN;
     }
 
     public String qualifiedSourceTable() {

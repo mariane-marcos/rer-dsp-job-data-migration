@@ -50,4 +50,28 @@ class WatermarkChangeDetectionStrategyTest {
         IllegalStateException ex = assertThrows(IllegalStateException.class, config::validate);
         assertTrue(ex.getMessage().contains("updated-at-column"));
     }
+
+    @Test
+    void adminUnitProperties_ValidateRequiresUpdatedAtForWatermark() {
+        AdministrativeUnitTableProperties config = new AdministrativeUnitTableProperties();
+        config.setSourceTable("source.unit");
+        config.setSyncKey(SyncKeys.ADMIN_UNIT_LEVEL_1);
+        config.setChangeDetectionStrategy(ChangeDetectionStrategyType.WATERMARK);
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class, config::validateWatermarkConfig);
+        assertTrue(ex.getMessage().contains("updated-at-column"));
+    }
+
+    @Test
+    void adminUnitProperties_ValidateRequiresSyncKeyForWatermark() {
+        AdministrativeUnitTableProperties config = new AdministrativeUnitTableProperties();
+        config.setSourceTable("source.unit");
+        config.setUpdatedAtColumn("source_updated_at");
+        config.setChangeDetectionStrategy(ChangeDetectionStrategyType.WATERMARK);
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class, config::validateWatermarkConfig);
+        assertTrue(ex.getMessage().contains("sync-key"));
+    }
 }

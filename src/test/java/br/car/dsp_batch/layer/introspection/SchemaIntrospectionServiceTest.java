@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -32,48 +33,53 @@ class SchemaIntrospectionServiceTest {
     }
 
     @Test
-    void introspect_UsesFirstGeometryWhenMultipleAndNoOverride() {
+    void introspect_SelectsOnlyConfiguredColumnsAndMapsCanonicalTargets() {
         LayerConfig config = baseConfig();
+        config.setPersistColumns(List.of("codigo"));
         config.setSrid(4674);
 
         stubTableExists();
         stubColumns(
-                column("id", "int8", false),
+                column("source_pk", "int8", false),
                 column("conservation_unit_id", "int8", false),
+                column("nome", "varchar", false),
                 column("data_atualizacao", "timestamptz", false),
-                column("centroid", "geometry", true),
+                column("codigo", "varchar", false),
+                column("ignored", "text", false),
                 column("the_geom", "geometry", true)
         );
-        stubPrimaryKey("id");
-        stubGeometryColumns(
-                geomColumn("centroid", 4674, "POINT"),
-                geomColumn("the_geom", 4674, "MULTILINESTRING")
-        );
+        stubGeometryColumnLookup("the_geom", 4674, "MULTILINESTRING");
         stubEmptyIndexes();
 
         LayerTableMetadata metadata = service.introspect(jdbc, config);
 
-        assertEquals("centroid", metadata.geometryColumn());
+        assertEquals("source_pk", metadata.primaryKeyColumn());
+        assertEquals("id", metadata.resolveTargetPrimaryKeyColumn());
+        assertEquals("nome", metadata.labelSourceColumn());
+        assertEquals("label", metadata.resolveTargetLabelColumn());
+        assertEquals("the_geom", metadata.geometryColumn());
         assertEquals("geom", metadata.resolveTargetGeometryColumn());
-        assertEquals("data_atualizacao", metadata.updatedAtSourceColumn());
-        assertEquals("updated_at", metadata.resolveTargetUpdatedAtColumn());
+        assertEquals(
+                List.of("source_pk", "conservation_unit_id", "nome", "data_atualizacao", "codigo", "the_geom"),
+                metadata.columns().stream().map(ColumnMetadata::name).toList()
+        );
+        assertFalse(metadata.columns().stream().anyMatch(c -> "ignored".equals(c.name())));
     }
 
     @Test
-    void introspect_HonorsGeometryColumnOverrideAndMapsToGeom() {
+    void introspect_HonorsGeometryColumnAndMapsToGeom() {
         LayerConfig config = baseConfig();
-        config.setGeometryColumn("the_geom");
         config.setSrid(4674);
 
         stubTableExists();
         stubColumns(
-                column("id", "int8", false),
+                column("source_pk", "int8", false),
                 column("conservation_unit_id", "int8", false),
+                column("nome", "varchar", false),
                 column("data_atualizacao", "timestamptz", false),
                 column("centroid", "geometry", true),
                 column("the_geom", "geometry", true)
         );
-        stubPrimaryKey("id");
         stubGeometryColumnLookup("the_geom", 4674, "MULTILINESTRING");
         stubEmptyIndexes();
 
@@ -87,17 +93,16 @@ class SchemaIntrospectionServiceTest {
     @Test
     void introspect_UsesConfiguredSridOverSource() {
         LayerConfig config = baseConfig();
-        config.setGeometryColumn("the_geom");
         config.setSrid(4326);
 
         stubTableExists();
         stubColumns(
-                column("id", "int8", false),
+                column("source_pk", "int8", false),
                 column("conservation_unit_id", "int8", false),
+                column("nome", "varchar", false),
                 column("data_atualizacao", "timestamptz", false),
                 column("the_geom", "geometry", true)
         );
-        stubPrimaryKey("id");
         stubGeometryColumnLookup("the_geom", 4674, "MULTILINESTRING");
         stubEmptyIndexes();
 
@@ -109,17 +114,16 @@ class SchemaIntrospectionServiceTest {
     @Test
     void introspect_FailsWhenGeometryColumnIsNotGeometryType() {
         LayerConfig config = baseConfig();
-        config.setGeometryColumn("name");
+        config.setGeometryColumn("nome");
 
         stubTableExists();
         stubColumns(
-                column("id", "int8", false),
+                column("source_pk", "int8", false),
                 column("conservation_unit_id", "int8", false),
+                column("nome", "varchar", false),
                 column("data_atualizacao", "timestamptz", false),
-                column("name", "varchar", false),
                 column("the_geom", "geometry", true)
         );
-        stubPrimaryKey("id");
 
         IllegalStateException ex = assertThrows(
                 IllegalStateException.class,
@@ -133,16 +137,15 @@ class SchemaIntrospectionServiceTest {
     @Test
     void introspect_FailsWithoutSrid() {
         LayerConfig config = baseConfig();
-        config.setGeometryColumn("the_geom");
 
         stubTableExists();
         stubColumns(
-                column("id", "int8", false),
+                column("source_pk", "int8", false),
                 column("conservation_unit_id", "int8", false),
+                column("nome", "varchar", false),
                 column("data_atualizacao", "timestamptz", false),
                 column("the_geom", "geometry", true)
         );
-        stubPrimaryKey("id");
         stubGeometryColumnLookup("the_geom", 0, "GEOMETRY");
         stubSampledSrid(0);
 
@@ -163,12 +166,12 @@ class SchemaIntrospectionServiceTest {
 
         stubTableExists();
         stubColumns(
-                column("id", "int8", false),
+                column("source_pk", "int8", false),
                 column("conservation_unit_id", "int8", false),
+                column("nome", "varchar", false),
                 column("data_atualizacao", "timestamptz", false),
                 column("the_geom", "geometry", true)
         );
-        stubPrimaryKey("id");
 
         IllegalStateException ex = assertThrows(
                 IllegalStateException.class,
@@ -180,19 +183,42 @@ class SchemaIntrospectionServiceTest {
     }
 
     @Test
-    void introspect_FailsWhenUpdatedAtColumnHasInvalidType() {
+    void introspect_FailsWhenLabelColumnMissing() {
         LayerConfig config = baseConfig();
-        config.setUpdatedAtColumn("name");
+        config.setLabelColumn("nome_inexistente");
         config.setSrid(4674);
 
         stubTableExists();
         stubColumns(
-                column("id", "int8", false),
+                column("source_pk", "int8", false),
                 column("conservation_unit_id", "int8", false),
-                column("name", "varchar", false),
+                column("nome", "varchar", false),
+                column("data_atualizacao", "timestamptz", false),
                 column("the_geom", "geometry", true)
         );
-        stubPrimaryKey("id");
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> service.introspect(jdbc, config)
+        );
+
+        assertTrue(ex.getMessage().contains("label-column"));
+        assertTrue(ex.getMessage().contains("does not exist"));
+    }
+
+    @Test
+    void introspect_FailsWhenUpdatedAtColumnHasInvalidType() {
+        LayerConfig config = baseConfig();
+        config.setUpdatedAtColumn("nome");
+        config.setSrid(4674);
+
+        stubTableExists();
+        stubColumns(
+                column("source_pk", "int8", false),
+                column("conservation_unit_id", "int8", false),
+                column("nome", "varchar", false),
+                column("the_geom", "geometry", true)
+        );
 
         IllegalStateException ex = assertThrows(
                 IllegalStateException.class,
@@ -203,11 +229,38 @@ class SchemaIntrospectionServiceTest {
         assertTrue(ex.getMessage().contains("timestamp"));
     }
 
+    @Test
+    void introspect_FailsWhenPersistColumnMissing() {
+        LayerConfig config = baseConfig();
+        config.setPersistColumns(List.of("nao_existe"));
+        config.setSrid(4674);
+
+        stubTableExists();
+        stubColumns(
+                column("source_pk", "int8", false),
+                column("conservation_unit_id", "int8", false),
+                column("nome", "varchar", false),
+                column("data_atualizacao", "timestamptz", false),
+                column("the_geom", "geometry", true)
+        );
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> service.introspect(jdbc, config)
+        );
+
+        assertTrue(ex.getMessage().contains("persist-columns"));
+        assertTrue(ex.getMessage().contains("does not exist"));
+    }
+
     private LayerConfig baseConfig() {
         LayerConfig config = new LayerConfig();
         config.setSourceTable("conservation.rivers");
+        config.setPrimaryKey("source_pk");
         config.setAreaOfInterestIdColumn("conservation_unit_id");
         config.setUpdatedAtColumn("data_atualizacao");
+        config.setLabelColumn("nome");
+        config.setGeometryColumn("the_geom");
         return config;
     }
 
@@ -221,19 +274,9 @@ class SchemaIntrospectionServiceTest {
                 .thenReturn(List.of(columns));
     }
 
-    private void stubPrimaryKey(String column) {
-        when(jdbc.query(contains("PRIMARY KEY"), any(RowMapper.class), any(), any()))
-                .thenReturn(List.of(column));
-    }
-
     private void stubEmptyIndexes() {
         when(jdbc.query(contains("pg_indexes"), any(RowMapper.class), any(), any()))
                 .thenReturn(List.of());
-    }
-
-    private void stubGeometryColumns(GeomColumn... rows) {
-        when(jdbc.query(contains("geometry_columns"), any(RowMapper.class), any(), any()))
-                .thenAnswer(invocation -> mapGeometryRows(invocation.getArgument(1), rows));
     }
 
     private void stubGeometryColumnLookup(String columnName, Integer srid, String type) {

@@ -58,63 +58,78 @@ batch:
       target-table: target_admin_units.target_l1_continent
       primary-key: source_continent_pk
       geometry-column: source_continent_geom
+      updated-at-column: source_updated_at
       where-clause: "1=1"
       comparison-columns:
         - source_continent_name
+        - source_updated_at
       persist-columns:
         - source_continent_pk
         - source_continent_name
+        - source_updated_at
       column-mapping:
         source_continent_pk: target_continent_id
         source_continent_name: target_continent_label
         source_continent_geom: target_continent_geometry
+        source_updated_at: target_updated_at
       layer-name: source-continents-geoserver-layer
       srid: 4326
-      change-detection-strategy: DEFAULT
+      change-detection-strategy: WATERMARK
+      # sync-key default: admin_unit_level_1
     level-2:
       source-table: source_admin_units.source_l2_countries
       target-table: target_admin_units.target_l2_country
       primary-key: source_country_pk
       partition-column: source_continent_fk
       geometry-column: source_country_geom
+      updated-at-column: source_updated_at
       where-clause: "1=1"
       comparison-columns:
         - source_country_name
         - source_continent_fk
+        - source_updated_at
       persist-columns:
         - source_country_pk
         - source_country_name
         - source_continent_fk
+        - source_updated_at
       column-mapping:
         source_country_pk: target_country_id
         source_country_name: target_country_label
         source_continent_fk: target_continent_ref
         source_country_geom: target_country_geometry
+        source_updated_at: target_updated_at
       layer-name: source-countries-geoserver-layer
       srid: 4326
-      change-detection-strategy: DEFAULT
+      change-detection-strategy: WATERMARK
+      # sync-key default: admin_unit_level_2
     level-3:
       source-table: source_admin_units.source_l3_admin_areas
       target-table: target_admin_units.target_l3_admin_division
       primary-key: source_area_pk
       partition-column: source_country_fk
       geometry-column: source_area_geom
+      updated-at-column: source_updated_at
       where-clause: "1=1"
       comparison-columns:
         - source_area_name
         - source_country_fk
+        - source_updated_at
       persist-columns:
         - source_area_pk
         - source_area_name
         - source_country_fk
+        - source_updated_at
       column-mapping:
         source_area_pk: target_division_id
         source_area_name: target_division_label
         source_country_fk: target_country_ref
         source_area_geom: target_division_geometry
+        source_updated_at: target_updated_at
       layer-name: source-admin-areas-geoserver-layer
       srid: 4326
-      change-detection-strategy: DEFAULT
+      change-detection-strategy: WATERMARK
+      # sync-key default: admin_unit_level_3
   area-of-interest:
     source-table: source_properties.source_property
     target-table: target_properties.target_property
@@ -153,19 +168,25 @@ batch:
     change-detection-strategy: WATERMARK
 
   # Layers: the job creates dsp.<table> on geo-target automatically.
-  # The link column becomes area_of_interest_id on the target.
-  # The last-update column becomes updated_at on the target (required).
+  # Required source columns map to fixed target names:
+  #   primary-key -> id
+  #   area-of-interest-id-column -> area_of_interest_id
+  #   updated-at-column -> updated_at
+  #   label-column -> label
+  #   geometry-column -> geom
+  # Optional extras in persist-columns keep the same name on the target.
   # Incremental watermark is stored in batch_metadata.dsp_sync_state.
-  # Add an entry here for each layer table that must be migrated.
-  # Tables without an SRID are not migrated, but you can declare srid below.
-  # If the table has multiple geometry columns, the job migrates the first one found.
-  # You can declare which geometry column should be migrated.
   layers:
     - source-table: source_layers.<table_name>
+      primary-key: source_pk
       area-of-interest-id-column: source_aoi_fk
       updated-at-column: source_updated_at
-      # geometry-column: source_geom
+      label-column: source_name
+      geometry-column: source_geom
       # srid: 4326
+      # persist-columns:
+      #   - codigo
+      #   - area_ha
 
 parallelization:
   jobs:
