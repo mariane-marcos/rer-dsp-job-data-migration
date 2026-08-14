@@ -1,9 +1,14 @@
 package br.car.dsp_batch.sync;
 
+import br.car.dsp_batch.temporal.WatermarkColumnSpec;
+import br.car.dsp_batch.temporal.WatermarkPredicate;
+import br.car.dsp_batch.temporal.WatermarkTemporalBridge;
+
 import java.time.Instant;
 
 /**
  * SQL fragments for incremental watermark filtering on source update columns.
+ * Delegates conversion rules to {@link WatermarkTemporalBridge}.
  */
 public final class WatermarkSql {
 
@@ -12,15 +17,17 @@ public final class WatermarkSql {
 
     /**
      * Builds a WHERE fragment for the source update column.
-     * Always requires {@code IS NOT NULL}. With a watermark, restricts to the delta.
+     * Always requires {@code IS NOT NULL}. With a watermark, restricts to the delta
+     * using the same Instant↔source projection as persistence.
      */
-    public static String buildUpdatedAtFilter(String updatedAtSourceColumn, Instant watermark) {
-        String notNull = updatedAtSourceColumn + " IS NOT NULL";
-        if (watermark == null) {
-            return notNull;
-        }
-        return notNull + " AND " + updatedAtSourceColumn + " > TIMESTAMP WITH TIME ZONE '"
-                + watermark + "'";
+    public static String buildUpdatedAtFilter(WatermarkColumnSpec watermarkColumn,
+                                              Instant watermark) {
+        return WatermarkTemporalBridge.buildPredicate(watermarkColumn, watermark).sqlFragment();
+    }
+
+    public static WatermarkPredicate buildPredicate(WatermarkColumnSpec watermarkColumn,
+                                                    Instant watermark) {
+        return WatermarkTemporalBridge.buildPredicate(watermarkColumn, watermark);
     }
 
     /**

@@ -3,8 +3,11 @@ package br.car.dsp_batch.layer.reader;
 import br.car.dsp_batch.batch.reader.AbstractPartitionedPagingItemReader;
 import br.car.dsp_batch.geometry.GeometrySql;
 import br.car.dsp_batch.layer.dto.LayerFeatureRecord;
+import br.car.dsp_batch.layer.metadata.ColumnMetadata;
 import br.car.dsp_batch.layer.metadata.LayerTableMetadata;
-import br.car.dsp_batch.layer.service.LayerChangeDetectionService;
+import br.car.dsp_batch.sync.WatermarkSql;
+import br.car.dsp_batch.temporal.CommonTemporalHandler;
+import br.car.dsp_batch.temporal.TemporalTypeClassifier;
 import org.springframework.batch.item.database.Order;
 import org.springframework.batch.item.database.PagingQueryProvider;
 import org.springframework.batch.item.database.support.PostgresPagingQueryProvider;
@@ -70,8 +73,8 @@ public class LayerFeatureReader extends AbstractPartitionedPagingItemReader<Laye
             where.append(" AND (").append(configWhere).append(")");
         }
 
-        String updatedAtFilter = LayerChangeDetectionService.buildUpdatedAtFilterSql(
-                metadata.updatedAtSourceColumn(), watermark);
+        String updatedAtFilter = WatermarkSql.buildUpdatedAtFilter(
+                metadata.watermarkColumn(), watermark);
         if (updatedAtFilter != null) {
             where.append(" AND ").append(updatedAtFilter);
         }
@@ -94,9 +97,14 @@ public class LayerFeatureReader extends AbstractPartitionedPagingItemReader<Laye
     private static class LayerFeatureRowMapper implements RowMapper<LayerFeatureRecord> {
 
         private final LayerTableMetadata metadata;
+        private final Map<String, String> udtByColumn;
 
         LayerFeatureRowMapper(LayerTableMetadata metadata) {
             this.metadata = metadata;
+            this.udtByColumn = new HashMap<>();
+            for (ColumnMetadata column : metadata.columns()) {
+                udtByColumn.put(column.name(), column.udtName());
+            }
         }
 
         @Override
@@ -106,7 +114,12 @@ public class LayerFeatureReader extends AbstractPartitionedPagingItemReader<Laye
             record.setGeometryGeoJson(rs.getString("geometry_geo_json"));
 
             for (String column : metadata.sourceNonGeometryColumnNames()) {
-                record.putAttribute(column, rs.getObject(column));
+                String udt = udtByColumn.get(column);
+                if (udt != null && TemporalTypeClassifier.isTemporal(udt)) {
+                    record.putAttribute(column, CommonTemporalHandler.read(rs, column, udt));
+                } else {
+                    record.putAttribute(column, rs.getObject(column));
+                }
             }
 
             return record;

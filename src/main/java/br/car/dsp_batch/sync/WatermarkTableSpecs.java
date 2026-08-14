@@ -1,7 +1,9 @@
 package br.car.dsp_batch.sync;
 
+import br.car.dsp_batch.aoi.metadata.AreaOfInterestTableMetadata;
 import br.car.dsp_batch.batch.config.JobTableConfig;
 import br.car.dsp_batch.layer.metadata.LayerTableMetadata;
+import br.car.dsp_batch.temporal.WatermarkColumnSpec;
 
 /**
  * Factories that build {@link WatermarkTableSpec} from domain contracts.
@@ -11,17 +13,17 @@ public final class WatermarkTableSpecs {
     private WatermarkTableSpecs() {
     }
 
-    public static WatermarkTableSpec fromJobTableConfig(JobTableConfig tableConfig) {
+    public static WatermarkTableSpec fromJobTableConfig(JobTableConfig tableConfig,
+                                                        WatermarkColumnSpec watermarkColumn) {
         String syncKey = tableConfig.getSyncKey();
         if (syncKey == null || syncKey.isBlank()) {
             throw new IllegalArgumentException(
                     "WATERMARK strategy requires sync-key for table "
                             + tableConfig.getSourceTable());
         }
-        String updatedAt = tableConfig.getUpdatedAtColumn();
-        if (updatedAt == null || updatedAt.isBlank()) {
+        if (watermarkColumn == null) {
             throw new IllegalArgumentException(
-                    "WATERMARK strategy requires updated-at-column for table "
+                    "WATERMARK strategy requires watermark column metadata for table "
                             + tableConfig.getSourceTable());
         }
 
@@ -33,7 +35,7 @@ public final class WatermarkTableSpecs {
                 tableConfig.getSourceTable(),
                 tableConfig.getPrimaryKey(),
                 tableConfig.getGeometryColumn(),
-                updatedAt.trim(),
+                watermarkColumn,
                 tableConfig.getWhereClause(),
                 tableConfig.getSrid(),
                 tableConfig.getLayerName(),
@@ -50,13 +52,31 @@ public final class WatermarkTableSpecs {
      * Admin-unit jobs use the same logical table name on business and geo databases;
      * layers write only to {@code dsp.*} on geo-target.
      */
+    public static WatermarkTableSpec fromAreaOfInterestMetadata(AreaOfInterestTableMetadata metadata) {
+        return new WatermarkTableSpec(
+                metadata.syncKey(),
+                metadata.qualifiedSourceTable(),
+                metadata.primaryKeyColumn(),
+                metadata.geometryColumn(),
+                metadata.watermarkColumn(),
+                metadata.whereClause(),
+                metadata.srid(),
+                metadata.layerName(),
+                metadata.qualifiedTargetTable(),
+                metadata.resolveTargetPrimaryKeyColumn(),
+                metadata.resolveTargetGeometryColumn(),
+                metadata.qualifiedTargetTable(),
+                metadata.resolveTargetPrimaryKeyColumn()
+        );
+    }
+
     public static WatermarkTableSpec fromLayerMetadata(LayerTableMetadata metadata) {
         return new WatermarkTableSpec(
                 metadata.layerKey(),
                 metadata.qualifiedSourceTable(),
                 metadata.primaryKeyColumn(),
                 metadata.geometryColumn(),
-                metadata.updatedAtSourceColumn(),
+                metadata.watermarkColumn(),
                 metadata.whereClause(),
                 metadata.srid(),
                 metadata.layerName(),

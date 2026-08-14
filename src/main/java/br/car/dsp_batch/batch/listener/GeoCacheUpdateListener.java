@@ -1,6 +1,6 @@
 package br.car.dsp_batch.batch.listener;
 
-import br.car.dsp_batch.batch.config.strategy.DefaultChangeDetectionStrategy;
+import br.car.dsp_batch.sync.WatermarkContextKeys;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.JobExecutionListener;
@@ -30,7 +30,7 @@ public class GeoCacheUpdateListener implements JobExecutionListener {
     @SuppressWarnings("unchecked")
     public void afterJob(JobExecution jobExecution) {
         Boolean hasChanges = (Boolean) jobExecution.getExecutionContext()
-                .get(DefaultChangeDetectionStrategy.CTX_HAS_CHANGES);
+                .get(WatermarkContextKeys.HAS_CHANGES);
 
         if (hasChanges == null || !hasChanges) {
             log.info("No cache update required for job {}", jobExecution.getJobInstance().getJobName());
@@ -38,9 +38,9 @@ public class GeoCacheUpdateListener implements JobExecutionListener {
         }
 
         List<String> bboxes = (List<String>) jobExecution.getExecutionContext()
-                .get(DefaultChangeDetectionStrategy.CTX_AFFECTED_BBOXES);
+                .get(WatermarkContextKeys.AFFECTED_BBOXES);
         String layerName = jobExecution.getExecutionContext()
-                .getString(DefaultChangeDetectionStrategy.CTX_LAYER_NAME);
+                .getString(WatermarkContextKeys.LAYER_NAME);
 
         if (bboxes == null || bboxes.isEmpty()) {
             log.warn("Changes were detected but no bounding boxes were collected.");

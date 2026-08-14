@@ -1,10 +1,11 @@
 package br.car.dsp_batch.sync;
 
 import br.car.dsp_batch.batch.config.table.AdministrativeUnitTableProperties;
-import br.car.dsp_batch.batch.config.strategy.ChangeDetectionStrategyType;
 import br.car.dsp_batch.layer.metadata.ColumnMetadata;
 import br.car.dsp_batch.layer.metadata.LayerTableMetadata;
 import br.car.dsp_batch.layer.metadata.QualifiedTable;
+import br.car.dsp_batch.temporal.TemporalTestFixtures;
+import br.car.dsp_batch.temporal.WatermarkColumnSpec;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -28,11 +29,11 @@ class WatermarkTableSpecsTest {
         config.setWhereClause("1=1");
         config.setSrid(4326);
         config.setLayerName("l1-layer");
-        config.setChangeDetectionStrategy(ChangeDetectionStrategyType.WATERMARK);
         config.getColumnMapping().put("source_pk", "target_id");
         config.getColumnMapping().put("source_geom", "target_geom");
 
-        WatermarkTableSpec spec = WatermarkTableSpecs.fromJobTableConfig(config);
+        WatermarkColumnSpec watermarkColumn = TemporalTestFixtures.timestamptz("source_updated_at");
+        WatermarkTableSpec spec = WatermarkTableSpecs.fromJobTableConfig(config, watermarkColumn);
 
         assertEquals(SyncKeys.ADMIN_UNIT_LEVEL_1, spec.syncKey());
         assertEquals("source_updated_at", spec.sourceUpdatedAtColumn());
@@ -43,16 +44,16 @@ class WatermarkTableSpecsTest {
     }
 
     @Test
-    void fromJobTableConfig_RequiresUpdatedAt() {
+    void fromJobTableConfig_RequiresWatermarkColumn() {
         AdministrativeUnitTableProperties config = new AdministrativeUnitTableProperties();
         config.setSourceTable("source.l1");
         config.setSyncKey(SyncKeys.ADMIN_UNIT_LEVEL_1);
 
         IllegalArgumentException ex = assertThrows(
                 IllegalArgumentException.class,
-                () -> WatermarkTableSpecs.fromJobTableConfig(config)
+                () -> WatermarkTableSpecs.fromJobTableConfig(config, null)
         );
-        assertTrue(ex.getMessage().contains("updated-at-column"));
+        assertTrue(ex.getMessage().contains("watermark column"));
     }
 
     @Test
@@ -65,7 +66,7 @@ class WatermarkTableSpecsTest {
                 "id",
                 "geom",
                 "aoi_fk",
-                "updated_at",
+                TemporalTestFixtures.timestamptz("updated_at"),
                 "nome",
                 4326,
                 List.of(new ColumnMetadata("id", "int8", null, null, null, false, false)),

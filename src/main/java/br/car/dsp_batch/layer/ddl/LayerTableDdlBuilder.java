@@ -28,40 +28,11 @@ public class LayerTableDdlBuilder {
     public List<String> buildStatements(LayerTableMetadata metadata) {
         List<String> statements = new ArrayList<>();
         statements.add(buildCreateTable(metadata));
-        // Existing tables (CREATE IF NOT EXISTS) may lack newer canonical columns.
-        statements.add(buildEnsureUpdatedAtColumn(metadata));
-        statements.add(buildEnsureLabelColumn(metadata));
         statements.add(buildGeometryIndex(metadata));
         statements.add(buildAreaOfInterestIdIndex(metadata));
         statements.add(buildUpdatedAtIndex(metadata));
         statements.addAll(buildSecondaryIndexes(metadata));
         return statements;
-    }
-
-    /**
-     * Ensures the canonical {@code updated_at} column exists on tables created before this rule.
-     */
-    public String buildEnsureUpdatedAtColumn(LayerTableMetadata metadata) {
-        return "ALTER TABLE " + metadata.qualifiedTargetTable()
-                + " ADD COLUMN IF NOT EXISTS "
-                + quote(LayerConfig.UPDATED_AT_COLUMN)
-                + " timestamptz";
-    }
-
-    /**
-     * Ensures the canonical {@code label} column exists on tables created before this rule.
-     */
-    public String buildEnsureLabelColumn(LayerTableMetadata metadata) {
-        ColumnMetadata labelColumn = metadata.columns().stream()
-                .filter(column -> column.name().equals(metadata.labelSourceColumn()))
-                .findFirst()
-                .orElseThrow(() -> new IllegalStateException(
-                        "Label source column '" + metadata.labelSourceColumn()
-                                + "' missing from metadata for " + metadata.qualifiedTargetTable()));
-        return "ALTER TABLE " + metadata.qualifiedTargetTable()
-                + " ADD COLUMN IF NOT EXISTS "
-                + quote(LayerConfig.LABEL_COLUMN)
-                + " " + typeMapper.toDdlType(labelColumn);
     }
 
     public String buildUpdatedAtIndex(LayerTableMetadata metadata) {
@@ -95,7 +66,10 @@ public class LayerTableDdlBuilder {
                 continue;
             }
 
-            String ddlType = typeMapper.toDdlType(column);
+            // Canonical updated_at on DSP is always TIMESTAMPTZ, regardless of source UDT.
+            String ddlType = LayerConfig.UPDATED_AT_COLUMN.equals(targetColumnName)
+                    ? "timestamptz"
+                    : typeMapper.toDdlType(column);
             columnDefinitions.add(quote(targetColumnName) + " " + ddlType);
         }
 

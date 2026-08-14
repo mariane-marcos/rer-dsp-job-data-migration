@@ -10,7 +10,7 @@ import br.car.dsp_batch.layer.introspection.SchemaIntrospectionService;
 import br.car.dsp_batch.layer.metadata.LayerMetadataRegistry;
 import br.car.dsp_batch.layer.partitioner.DeferredLayerPartitioner;
 import br.car.dsp_batch.sync.SyncWatermarkCommitListener;
-import br.car.dsp_batch.layer.service.LayerChangeDetectionService;
+import br.car.dsp_batch.sync.WatermarkChangeDetectionEngine;
 import br.car.dsp_batch.sync.SyncStateRepository;
 import br.car.dsp_batch.layer.tasklet.LayerChangeDetectionTasklet;
 import br.car.dsp_batch.layer.tasklet.LayerTableSetupTasklet;
@@ -49,7 +49,7 @@ public class LayerMigrationJobFactory {
     private final SchemaIntrospectionService introspectionService;
     private final LayerTableDdlBuilder ddlBuilder;
     private final LayerMetadataRegistry registry;
-    private final LayerChangeDetectionService changeDetectionService;
+    private final WatermarkChangeDetectionEngine changeDetectionEngine;
     private final SyncStateRepository syncStateRepository;
     private final SyncWatermarkCommitListener watermarkCommitListener;
     private final ChangeDecider changeDecider;
@@ -66,7 +66,7 @@ public class LayerMigrationJobFactory {
             SchemaIntrospectionService introspectionService,
             LayerTableDdlBuilder ddlBuilder,
             LayerMetadataRegistry registry,
-            LayerChangeDetectionService changeDetectionService,
+            WatermarkChangeDetectionEngine changeDetectionEngine,
             SyncStateRepository syncStateRepository,
             SyncWatermarkCommitListener watermarkCommitListener,
             ChangeDecider changeDecider,
@@ -81,7 +81,7 @@ public class LayerMigrationJobFactory {
         this.introspectionService = introspectionService;
         this.ddlBuilder = ddlBuilder;
         this.registry = registry;
-        this.changeDetectionService = changeDetectionService;
+        this.changeDetectionEngine = changeDetectionEngine;
         this.syncStateRepository = syncStateRepository;
         this.watermarkCommitListener = watermarkCommitListener;
         this.changeDecider = changeDecider;
@@ -141,7 +141,7 @@ public class LayerMigrationJobFactory {
                 .tasklet(new LayerChangeDetectionTasklet(
                         sourceJdbc,
                         geoTargetJdbc,
-                        changeDetectionService,
+                        changeDetectionEngine,
                         registry,
                         config.resolveKey()
                 ), transactionManager)

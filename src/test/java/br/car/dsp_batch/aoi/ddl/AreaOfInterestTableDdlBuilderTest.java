@@ -1,0 +1,93 @@
+package br.car.dsp_batch.aoi.ddl;
+
+import br.car.dsp_batch.aoi.metadata.AreaOfInterestTableMetadata;
+import br.car.dsp_batch.layer.ddl.PostgresTypeMapper;
+import br.car.dsp_batch.layer.metadata.ColumnMetadata;
+import br.car.dsp_batch.layer.metadata.QualifiedTable;
+import br.car.dsp_batch.temporal.TemporalTestFixtures;
+import org.junit.jupiter.api.Test;
+
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class AreaOfInterestTableDdlBuilderTest {
+
+    private final AreaOfInterestTableDdlBuilder builder =
+            new AreaOfInterestTableDdlBuilder(new PostgresTypeMapper());
+
+    @Test
+    void buildGeoCreateTable_UsesCanonicalTargetColumns() {
+        AreaOfInterestTableMetadata metadata = sampleMetadata(List.of());
+
+        String ddl = builder.buildGeoCreateTable(metadata);
+
+        assertTrue(ddl.contains("CREATE TABLE IF NOT EXISTS dsp.area_of_interest"));
+        assertTrue(ddl.contains("\"id\" bigint"));
+        assertTrue(ddl.contains("\"registration_date\""));
+        assertTrue(ddl.contains("\"updated_at\" timestamptz"));
+        assertTrue(ddl.contains("\"territory_level_3_id\" bigint"));
+        assertTrue(ddl.contains("\"area\""));
+        assertTrue(ddl.contains("\"geom\" geometry(Geometry, 4674)"));
+        assertTrue(!ddl.contains("\"creation_date\""));
+        assertTrue(!ddl.contains("\"commune_id\""));
+        assertTrue(!ddl.contains("\"total_area_ha\""));
+        assertTrue(ddl.contains("PRIMARY KEY (\"id\")"));
+    }
+
+    @Test
+    void buildGeoCreateTable_ExcludesBusinessOnlyColumns() {
+        AreaOfInterestTableMetadata metadata = sampleMetadata(List.of("theme_1", "theme_2"));
+
+        String geoDdl = builder.buildGeoCreateTable(metadata);
+        String businessDdl = builder.buildBusinessCreateTable(metadata);
+
+        assertTrue(!geoDdl.contains("\"theme_1\""));
+        assertTrue(!geoDdl.contains("\"theme_2\""));
+        assertTrue(businessDdl.contains("\"theme_1\""));
+        assertTrue(businessDdl.contains("\"theme_2\""));
+    }
+
+    @Test
+    void buildBusinessCreateTable_AddsBoundaryBoxAndCentroid() {
+        AreaOfInterestTableMetadata metadata = sampleMetadata(List.of());
+
+        String ddl = builder.buildBusinessCreateTable(metadata);
+
+        assertTrue(ddl.contains("\"boundary_box\" geometry(Polygon, 4674)"));
+        assertTrue(ddl.contains("\"centroid_coordinates\" geometry(Point, 4674)"));
+        assertTrue(!ddl.contains("\"geom\""));
+        assertTrue(ddl.contains("\"territory_level_3_id\""));
+    }
+
+    private static AreaOfInterestTableMetadata sampleMetadata(List<String> businessOnlySourceColumns) {
+        List<ColumnMetadata> columns = new java.util.ArrayList<>(List.of(
+                new ColumnMetadata("id", "int8", null, null, null, false, false),
+                new ColumnMetadata("creation_date", "date", null, null, null, false, false),
+                new ColumnMetadata("updated_at", "timestamptz", null, null, null, false, false),
+                new ColumnMetadata("commune_id", "int8", null, null, null, false, false),
+                new ColumnMetadata("total_area_ha", "numeric", null, null, null, false, false),
+                new ColumnMetadata("geom", "geometry", null, null, null, true, true)
+        ));
+        for (String businessOnly : businessOnlySourceColumns) {
+            columns.add(new ColumnMetadata(businessOnly, "numeric", null, null, null, true, false));
+        }
+        return new AreaOfInterestTableMetadata(
+                "area_of_interest",
+                "chile-conservation-units",
+                new QualifiedTable("conservation", "conservation_units"),
+                new QualifiedTable("dsp", "area_of_interest"),
+                "id",
+                "creation_date",
+                "commune_id",
+                "total_area_ha",
+                "geom",
+                TemporalTestFixtures.timestamptz("updated_at"),
+                4674,
+                columns,
+                businessOnlySourceColumns,
+                List.of(),
+                "1=1"
+        );
+    }
+}

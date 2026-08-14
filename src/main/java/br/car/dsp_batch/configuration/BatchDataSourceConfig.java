@@ -39,6 +39,8 @@ public class BatchDataSourceConfig {
         config.setDriverClassName(properties.getDriverClassName());
         // Allow pool startup even if the DB is down; unified connectivity check fails later.
         config.setInitializationFailTimeout(-1);
+        // Defense in depth: session TZ must not reinterpret TIMESTAMP values.
+        config.setConnectionInitSql("SET TIME ZONE 'UTC'");
         return config;
     }
 

@@ -2,7 +2,11 @@ package br.car.dsp_batch.layer.service;
 
 import br.car.dsp_batch.geometry.GeometrySql;
 import br.car.dsp_batch.layer.dto.LayerFeatureRecord;
+import br.car.dsp_batch.layer.metadata.ColumnMetadata;
 import br.car.dsp_batch.layer.metadata.LayerTableMetadata;
+import br.car.dsp_batch.temporal.CommonTemporalHandler;
+import br.car.dsp_batch.temporal.TemporalTypeClassifier;
+import br.car.dsp_batch.temporal.WatermarkTemporalBridge;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataAccessException;
@@ -10,8 +14,12 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
+
+import static br.car.dsp_batch.layer.config.LayerConfig.UPDATED_AT_COLUMN;
 
 /**
  * Persists layer features to the geo-target database (full geometry for WMS).
@@ -69,6 +77,11 @@ public class LayerFeaturePersistenceService {
         String geom = metadata.resolveTargetGeometryColumn();
         int srid = metadata.srid();
 
+        Map<String, String> udtBySource = new HashMap<>();
+        for (ColumnMetadata column : metadata.columns()) {
+            udtBySource.put(column.name(), column.udtName());
+        }
+
         String insertColumns = String.join(", ", targetColumns) + ", " + geom;
         String placeholders = targetColumns.stream().map(c -> "?").collect(Collectors.joining(", "));
         String geometryPlaceholder = GeometrySql.geomFromGeoJsonParam2d(srid);
@@ -96,7 +109,19 @@ public class LayerFeaturePersistenceService {
                 int index = 1;
                 for (String targetColumn : targetColumns) {
                     String sourceColumn = metadata.resolveSourceColumnName(targetColumn);
-                    ps.setObject(index++, item.getAttribute(sourceColumn));
+                    Object value = item.getAttribute(sourceColumn);
+                    if (UPDATED_AT_COLUMN.equals(targetColumn)) {
+                        var instant = WatermarkTemporalBridge.toInstant(
+                                value, metadata.watermarkColumn());
+                        ps.setObject(index++, WatermarkTemporalBridge.toDspTimestamptz(instant));
+                    } else {
+                        String udt = udtBySource.get(sourceColumn);
+                        if (udt != null && TemporalTypeClassifier.isTemporal(udt)) {
+                            CommonTemporalHandler.write(ps, index++, value, udt);
+                        } else {
+                            ps.setObject(index++, value);
+                        }
+                    }
                 }
                 ps.setString(index, item.getGeometryGeoJson());
             });

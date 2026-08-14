@@ -1,13 +1,14 @@
 package br.car.dsp_batch.sync;
 
 import br.car.dsp_batch.geometry.GeometrySql;
+import br.car.dsp_batch.temporal.TemporalType;
+import br.car.dsp_batch.temporal.WatermarkTemporalBridge;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.scope.context.ChunkContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Service;
 
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -41,6 +42,14 @@ public class WatermarkChangeDetectionEngine {
         requireSpec(spec);
         log.info("Starting watermark change detection for table={} syncKey={}",
                 spec.sourceTable(), spec.syncKey());
+        if (spec.watermarkColumn().sourceType() == TemporalType.DATE) {
+            log.warn(
+                    "updated-at-column '{}' on {} is DATE — watermark granularity is daily "
+                            + "(source-timezone={})",
+                    spec.sourceUpdatedAtColumn(),
+                    spec.sourceTable(),
+                    spec.watermarkColumn().policy().zoneIdOrNull());
+        }
 
         Optional<SyncState> state = syncStateRepository.findBySyncKey(spec.syncKey());
         Instant watermark = state.map(SyncState::watermarkUpdatedAt).orElse(null);
@@ -115,14 +124,10 @@ public class WatermarkChangeDetectionEngine {
                 && !"1=1".equals(configWhere.trim());
 
         StringBuilder where = new StringBuilder("WHERE ").append(validGeomFilter);
-        where.append(" AND ").append(updatedAt).append(" IS NOT NULL");
+        String watermarkFilter = WatermarkSql.buildUpdatedAtFilter(spec.watermarkColumn(), watermark);
+        where.append(" AND ").append(watermarkFilter);
         if (hasConfigWhere) {
             where.append(" AND (").append(configWhere).append(")");
-        }
-        List<Object> params = new ArrayList<>();
-        if (watermark != null) {
-            where.append(" AND ").append(updatedAt).append(" > ?");
-            params.add(Timestamp.from(watermark));
         }
 
         String geom2d = GeometrySql.force2d(geom);
@@ -148,9 +153,9 @@ public class WatermarkChangeDetectionEngine {
 
         AtomicReference<Instant> maxUpdatedAt = new AtomicReference<>();
         sourceJdbc.query(sql, rs -> {
-            Timestamp ts = rs.getTimestamp("feature_updated_at");
-            if (ts != null) {
-                Instant instant = ts.toInstant();
+            Instant instant = WatermarkTemporalBridge.readInstant(
+                    rs, "feature_updated_at", spec.watermarkColumn());
+            if (instant != null) {
                 maxUpdatedAt.updateAndGet(current ->
                         current == null || instant.isAfter(current) ? instant : current);
             }
@@ -159,7 +164,7 @@ public class WatermarkChangeDetectionEngine {
                     rs.getDouble("miny"),
                     rs.getDouble("maxx"),
                     rs.getDouble("maxy")));
-        }, params.toArray());
+        });
 
         log.info("Source delta: {} record(s) after watermark {}", bboxes.size(), watermark);
         return maxUpdatedAt.get();
@@ -302,7 +307,7 @@ public class WatermarkChangeDetectionEngine {
         if (spec.syncKey() == null || spec.syncKey().isBlank()) {
             throw new IllegalArgumentException("WATERMARK requires sync-key");
         }
-        if (spec.sourceUpdatedAtColumn() == null || spec.sourceUpdatedAtColumn().isBlank()) {
+        if (spec.watermarkColumn() == null) {
             throw new IllegalArgumentException(
                     "WATERMARK requires updated-at-column for table " + spec.sourceTable());
         }

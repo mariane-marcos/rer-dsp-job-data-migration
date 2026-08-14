@@ -3,6 +3,7 @@ package br.car.dsp_batch.layer.introspection;
 import br.car.dsp_batch.layer.config.LayerConfig;
 import br.car.dsp_batch.layer.metadata.ColumnMetadata;
 import br.car.dsp_batch.layer.metadata.LayerTableMetadata;
+import br.car.dsp_batch.temporal.BatchTemporalProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -24,12 +25,18 @@ import static org.mockito.Mockito.when;
 
 class SchemaIntrospectionServiceTest {
 
-    private final SchemaIntrospectionService service = new SchemaIntrospectionService();
+    private SchemaIntrospectionService service;
     private JdbcTemplate jdbc;
+    private JdbcTemplate geoTargetJdbc;
+    private BatchTemporalProperties batchTemporalProperties;
 
     @BeforeEach
     void setUp() {
         jdbc = mock(JdbcTemplate.class);
+        geoTargetJdbc = mock(JdbcTemplate.class);
+        batchTemporalProperties = new BatchTemporalProperties("America/Sao_Paulo");
+        service = new SchemaIntrospectionService(batchTemporalProperties, geoTargetJdbc);
+        stubTargetTableMissing();
     }
 
     @Test
@@ -230,6 +237,30 @@ class SchemaIntrospectionServiceTest {
     }
 
     @Test
+    void introspect_FailsWhenTimestampWatermarkWithoutTimezone() {
+        SchemaIntrospectionService localService = new SchemaIntrospectionService(
+                new BatchTemporalProperties(null), geoTargetJdbc);
+        LayerConfig config = baseConfig();
+        config.setUpdatedAtColumn("data_atualizacao");
+        config.setSrid(4674);
+
+        stubTableExists();
+        stubColumns(
+                column("source_pk", "int8", false),
+                column("conservation_unit_id", "int8", false),
+                column("nome", "varchar", false),
+                column("data_atualizacao", "timestamp", false),
+                column("the_geom", "geometry", true)
+        );
+
+        IllegalStateException ex = assertThrows(
+                IllegalStateException.class,
+                () -> localService.introspect(jdbc, config)
+        );
+        assertTrue(ex.getMessage().contains("source-timezone"));
+    }
+
+    @Test
     void introspect_FailsWhenPersistColumnMissing() {
         LayerConfig config = baseConfig();
         config.setPersistColumns(List.of("nao_existe"));
@@ -267,6 +298,12 @@ class SchemaIntrospectionServiceTest {
     private void stubTableExists() {
         when(jdbc.queryForObject(contains("information_schema.tables"), eq(Integer.class), any(), any()))
                 .thenReturn(1);
+    }
+
+    private void stubTargetTableMissing() {
+        when(geoTargetJdbc.queryForObject(
+                contains("information_schema.tables"), eq(Integer.class), any(), any()))
+                .thenReturn(0);
     }
 
     private void stubColumns(ColumnMetadata... columns) {

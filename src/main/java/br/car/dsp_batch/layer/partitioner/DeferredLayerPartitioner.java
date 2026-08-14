@@ -1,22 +1,18 @@
 package br.car.dsp_batch.layer.partitioner;
 
-import br.car.dsp_batch.batch.partitioner.ColumnRangePartitioner;
 import br.car.dsp_batch.layer.metadata.LayerMetadataRegistry;
 import br.car.dsp_batch.layer.metadata.LayerTableMetadata;
-import br.car.dsp_batch.layer.service.LayerChangeDetectionService;
 import br.car.dsp_batch.sync.SyncStateRepository;
-import br.car.dsp_batch.sync.WatermarkSql;
+import br.car.dsp_batch.sync.WatermarkPartitionSupport;
 import org.springframework.batch.core.partition.support.Partitioner;
 import org.springframework.batch.item.ExecutionContext;
 
 import javax.sql.DataSource;
-import java.time.Instant;
 import java.util.Map;
 
 /**
- * Creates the {@link ColumnRangePartitioner} at execution time,
- * after the setup step has populated the {@link LayerMetadataRegistry}.
- * Applies the same {@code updated_at} watermark filter used by the reader.
+ * Creates the range partitioner at execution time after layer setup,
+ * applying the same watermark filter used by the reader.
  */
 public class DeferredLayerPartitioner implements Partitioner {
 
@@ -38,15 +34,13 @@ public class DeferredLayerPartitioner implements Partitioner {
     @Override
     public Map<String, ExecutionContext> partition(int gridSize) {
         LayerTableMetadata metadata = registry.getRequired(layerKey);
-        Instant watermark = syncStateRepository.findWatermark(layerKey).orElse(null);
-
-        String whereClause = WatermarkSql.combineWhere(
+        var watermark = syncStateRepository.findWatermark(layerKey).orElse(null);
+        String whereClause = WatermarkPartitionSupport.resolveWhereClause(
                 metadata.whereClause(),
-                LayerChangeDetectionService.buildUpdatedAtFilterSql(
-                        metadata.updatedAtSourceColumn(), watermark)
+                metadata.watermarkColumn(),
+                watermark
         );
-
-        ColumnRangePartitioner delegate = new ColumnRangePartitioner(
+        Partitioner delegate = WatermarkPartitionSupport.columnRangePartitioner(
                 sourceDataSource,
                 metadata.qualifiedSourceTable(),
                 metadata.primaryKeyColumn(),

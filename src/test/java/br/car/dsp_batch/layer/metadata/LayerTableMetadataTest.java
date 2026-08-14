@@ -1,6 +1,7 @@
 package br.car.dsp_batch.layer.metadata;
 
 import br.car.dsp_batch.layer.config.LayerConfig;
+import br.car.dsp_batch.temporal.TemporalTestFixtures;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -72,7 +73,7 @@ class LayerTableMetadataTest {
                 "source_pk",
                 geometryColumn,
                 "conservation_unit_id",
-                updatedAtColumn,
+                TemporalTestFixtures.timestamptz(updatedAtColumn),
                 labelColumn,
                 4674,
                 List.of(

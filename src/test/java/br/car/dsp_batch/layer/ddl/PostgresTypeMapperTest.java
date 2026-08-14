@@ -51,4 +51,15 @@ class PostgresTypeMapperTest {
                 "area", "numeric", null, 10, 0, true, false);
         assertEquals("numeric(10)", mapper.toDdlType(column));
     }
+
+    @Test
+    void toDdlType_PreservesTemporalSemanticsForCommonColumns() {
+        assertEquals("date", mapper.toDdlType(
+                new ColumnMetadata("d", "date", null, null, null, true, false)));
+        assertEquals("timestamp", mapper.toDdlType(
+                new ColumnMetadata("t", "timestamp", null, null, null, true, false)));
+        assertEquals("timestamptz", mapper.toDdlType(
+                new ColumnMetadata("tz", "timestamptz", null, null, null, true, false)));
+    }
 }
+

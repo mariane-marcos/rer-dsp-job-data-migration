@@ -3,14 +3,21 @@ package br.car.dsp_batch.service;
 import br.car.dsp_batch.batch.config.JobTableConfig;
 import br.car.dsp_batch.batch.dto.AdministrativeUnitDTO;
 import br.car.dsp_batch.geometry.GeometrySql;
+import br.car.dsp_batch.temporal.CommonTemporalHandler;
+import br.car.dsp_batch.temporal.TemporalTypeClassifier;
+import br.car.dsp_batch.temporal.WatermarkColumnSpec;
+import br.car.dsp_batch.temporal.WatermarkTemporalBridge;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.stream.Collectors;
 
 /**
@@ -35,6 +42,12 @@ public class AdministrativeUnitPersistenceService {
     }
 
     public void upsertAll(List<AdministrativeUnitDTO> items, JobTableConfig tableConfig) {
+        upsertAll(items, tableConfig, null);
+    }
+
+    public void upsertAll(List<AdministrativeUnitDTO> items,
+                          JobTableConfig tableConfig,
+                          WatermarkColumnSpec watermarkColumn) {
         if (items == null || items.isEmpty()) {
             return;
         }
@@ -61,8 +74,8 @@ public class AdministrativeUnitPersistenceService {
             return;
         }
 
-        upsertBusinessTarget(validItems, tableConfig);
-        upsertGeoTarget(validItems, tableConfig);
+        upsertBusinessTarget(validItems, tableConfig, watermarkColumn);
+        upsertGeoTarget(validItems, tableConfig, watermarkColumn);
 
         log.info(
                 "Upserted {} records into business target {} and geo-target (skipped {} without geometry)",
@@ -72,7 +85,9 @@ public class AdministrativeUnitPersistenceService {
         );
     }
 
-    private void upsertBusinessTarget(List<AdministrativeUnitDTO> items, JobTableConfig tableConfig) {
+    private void upsertBusinessTarget(List<AdministrativeUnitDTO> items,
+                                      JobTableConfig tableConfig,
+                                      WatermarkColumnSpec watermarkColumn) {
         List<String> sourceColumns = tableConfig.getAllBusinessPersistColumns();
         List<String> targetColumns = sourceColumns.stream()
                 .map(tableConfig::resolveTargetColumn)
@@ -113,7 +128,7 @@ public class AdministrativeUnitPersistenceService {
             targetJdbcTemplate.batchUpdate(sql, items, items.size(), (ps, item) -> {
                 int index = 1;
                 for (String column : sourceColumns) {
-                    ps.setObject(index++, item.getAttribute(column));
+                    index = bindAttribute(ps, index, item, column, tableConfig, watermarkColumn);
                 }
                 ps.setString(index++, item.getGeometryGeoJson());
                 ps.setString(index, item.getGeometryGeoJson());
@@ -128,7 +143,9 @@ public class AdministrativeUnitPersistenceService {
         }
     }
 
-    private void upsertGeoTarget(List<AdministrativeUnitDTO> items, JobTableConfig tableConfig) {
+    private void upsertGeoTarget(List<AdministrativeUnitDTO> items,
+                                 JobTableConfig tableConfig,
+                                 WatermarkColumnSpec watermarkColumn) {
         List<String> sourceColumns = tableConfig.getPersistColumns();
         List<String> targetColumns = sourceColumns.stream()
                 .map(tableConfig::resolveTargetColumn)
@@ -165,7 +182,7 @@ public class AdministrativeUnitPersistenceService {
             geoTargetJdbcTemplate.batchUpdate(sql, items, items.size(), (ps, item) -> {
                 int index = 1;
                 for (String column : sourceColumns) {
-                    ps.setObject(index++, item.getAttribute(column));
+                    index = bindAttribute(ps, index, item, column, tableConfig, watermarkColumn);
                 }
                 ps.setString(index, item.getGeometryGeoJson());
             });
@@ -177,6 +194,47 @@ public class AdministrativeUnitPersistenceService {
                             + tableConfig.getTargetTable() + ": " + e.getMessage(),
                     e);
         }
+    }
+
+    private int bindAttribute(PreparedStatement ps,
+                              int index,
+                              AdministrativeUnitDTO item,
+                              String sourceColumn,
+                              JobTableConfig tableConfig,
+                              WatermarkColumnSpec watermarkColumn) throws SQLException {
+        Object value = item.getAttribute(sourceColumn);
+        if (watermarkColumn != null
+                && sourceColumn.equalsIgnoreCase(watermarkColumn.sourceColumn())) {
+            var instant = WatermarkTemporalBridge.toInstant(value, watermarkColumn);
+            ps.setObject(index, WatermarkTemporalBridge.toDspTimestamptz(instant));
+            return index + 1;
+        }
+        if (value != null && TemporalTypeClassifier.isTemporal(guessUdtFromValue(value))) {
+            CommonTemporalHandler.write(
+                    ps, index, value, TemporalTypeClassifier.classify(guessUdtFromValue(value)));
+            return index + 1;
+        }
+        ps.setObject(index, value);
+        return index + 1;
+    }
+
+    private static String guessUdtFromValue(Object value) {
+        if (value instanceof java.time.LocalDate) {
+            return "date";
+        }
+        if (value instanceof java.time.LocalDateTime) {
+            return "timestamp";
+        }
+        if (value instanceof java.time.OffsetDateTime) {
+            return "timestamptz";
+        }
+        if (value instanceof java.time.LocalTime) {
+            return "time";
+        }
+        if (value instanceof java.time.OffsetTime) {
+            return "timetz";
+        }
+        return value.getClass().getSimpleName().toLowerCase(Locale.ROOT);
     }
 
     public static void requirePositiveSrid(JobTableConfig tableConfig) {

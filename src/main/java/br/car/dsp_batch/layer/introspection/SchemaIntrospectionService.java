@@ -5,7 +5,14 @@ import br.car.dsp_batch.layer.metadata.ColumnMetadata;
 import br.car.dsp_batch.layer.metadata.IndexMetadata;
 import br.car.dsp_batch.layer.metadata.LayerTableMetadata;
 import br.car.dsp_batch.layer.metadata.QualifiedTable;
+import br.car.dsp_batch.temporal.BatchTemporalProperties;
+import br.car.dsp_batch.temporal.CommonTemporalHandler;
+import br.car.dsp_batch.temporal.SourceTemporalPolicy;
+import br.car.dsp_batch.temporal.TemporalType;
+import br.car.dsp_batch.temporal.TemporalTypeClassifier;
+import br.car.dsp_batch.temporal.WatermarkColumnSpec;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -32,11 +39,15 @@ import static br.car.dsp_batch.layer.config.LayerConfig.UPDATED_AT_COLUMN;
 @Service
 public class SchemaIntrospectionService {
 
-    private static final Set<String> UPDATED_AT_UDT_NAMES = Set.of(
-            "timestamp",
-            "timestamptz",
-            "date"
-    );
+    private final BatchTemporalProperties batchTemporalProperties;
+    private final JdbcTemplate geoTargetJdbcTemplate;
+
+    public SchemaIntrospectionService(
+            BatchTemporalProperties batchTemporalProperties,
+            @Qualifier("geoTargetJdbcTemplate") JdbcTemplate geoTargetJdbcTemplate) {
+        this.batchTemporalProperties = batchTemporalProperties;
+        this.geoTargetJdbcTemplate = geoTargetJdbcTemplate;
+    }
 
     public boolean tableExists(JdbcTemplate jdbc, QualifiedTable table) {
         Integer count = jdbc.queryForObject(
@@ -71,7 +82,9 @@ public class SchemaIntrospectionService {
                 allColumns, config.getPrimaryKey(), "primary-key");
         String areaOfInterestIdColumn = requireConfiguredColumn(
                 allColumns, config.getAreaOfInterestIdColumn(), "area-of-interest-id-column");
-        String updatedAtColumn = requireUpdatedAtColumn(allColumns, config.getUpdatedAtColumn());
+        WatermarkColumnSpec watermarkColumn = requireUpdatedAtColumn(
+                allColumns, config.getUpdatedAtColumn(), config);
+        String updatedAtColumn = watermarkColumn.sourceColumn();
         String labelColumn = requireConfiguredColumn(
                 allColumns, config.getLabelColumn(), "label-column");
         GeometryInfo geometryInfo = resolveGeometry(
@@ -79,11 +92,13 @@ public class SchemaIntrospectionService {
 
         List<String> persistColumns = normalizePersistColumns(config.getPersistColumns());
         validatePersistColumnsExist(allColumns, persistColumns);
+        validatePersistColumnsTemporalTypes(allColumns, persistColumns);
         rejectCanonicalTargetNameCollisions(source, allColumns, primaryKey, areaOfInterestIdColumn,
                 updatedAtColumn, labelColumn, geometryInfo.columnName(), persistColumns);
 
         warnIfHigherDimensional(source, geometryInfo);
         int srid = resolveSrid(sourceJdbc, source, geometryInfo, config.getSrid());
+        requireExistingTargetUpdatedAtTimestamptz(target);
 
         List<ColumnMetadata> migratedColumns = selectMigratedColumns(
                 allColumns,
@@ -101,7 +116,7 @@ public class SchemaIntrospectionService {
 
         log.info(
                 "Introspection completed for {}: pk={} -> {}, aoiLink={} -> {}, "
-                        + "sourceUpdatedAt={} -> {}, label={} -> {}, sourceGeom={} -> {}, "
+                        + "sourceUpdatedAt={} ({}) -> {}, label={} -> {}, sourceGeom={} -> {}, "
                         + "srid={}, migratedColumns={}",
                 source.qualified(),
                 primaryKey,
@@ -109,6 +124,7 @@ public class SchemaIntrospectionService {
                 areaOfInterestIdColumn,
                 AREA_OF_INTEREST_ID_COLUMN,
                 updatedAtColumn,
+                watermarkColumn.sourceType(),
                 UPDATED_AT_COLUMN,
                 labelColumn,
                 LABEL_COLUMN,
@@ -126,7 +142,7 @@ public class SchemaIntrospectionService {
                 primaryKey,
                 geometryInfo.columnName(),
                 areaOfInterestIdColumn,
-                updatedAtColumn,
+                watermarkColumn,
                 labelColumn,
                 srid,
                 migratedColumns,
@@ -224,6 +240,64 @@ public class SchemaIntrospectionService {
     private void validatePersistColumnsExist(List<ColumnMetadata> columns, List<String> persistColumns) {
         for (String column : persistColumns) {
             requireColumn(columns, column, "persist-columns");
+        }
+    }
+
+    private void validatePersistColumnsTemporalTypes(List<ColumnMetadata> columns,
+                                                     List<String> persistColumns) {
+        Map<String, ColumnMetadata> byName = new LinkedHashMap<>();
+        for (ColumnMetadata column : columns) {
+            byName.put(column.name(), column);
+        }
+        for (String name : persistColumns) {
+            ColumnMetadata column = byName.get(name);
+            if (column == null) {
+                continue;
+            }
+            TemporalType type = TemporalTypeClassifier.classify(column.udtName());
+            if (type == TemporalType.UNSUPPORTED && isExplicitlyTemporalUdt(column.udtName())) {
+                throw new IllegalStateException(
+                        "persist-columns entry '" + name + "' has unsupported temporal type '"
+                                + column.udtName() + "'.");
+            }
+            CommonTemporalHandler.requireCommonSupported(name, column.udtName());
+        }
+    }
+
+    private boolean isExplicitlyTemporalUdt(String udtName) {
+        if (udtName == null) {
+            return false;
+        }
+        String lower = udtName.toLowerCase(Locale.ROOT);
+        return lower.contains("time") || lower.contains("date") || lower.contains("interval");
+    }
+
+    private void requireExistingTargetUpdatedAtTimestamptz(QualifiedTable target) {
+        if (!tableExists(geoTargetJdbcTemplate, target)) {
+            return;
+        }
+        List<String> udts = geoTargetJdbcTemplate.query(
+                """
+                SELECT udt_name
+                FROM information_schema.columns
+                WHERE table_schema = ? AND table_name = ? AND column_name = ?
+                """,
+                (rs, rowNum) -> rs.getString("udt_name"),
+                target.schema(),
+                target.table(),
+                UPDATED_AT_COLUMN
+        );
+        if (udts.isEmpty()) {
+            throw new IllegalStateException(
+                    "Target table " + target.qualified()
+                            + " exists but has no '" + UPDATED_AT_COLUMN + "' column.");
+        }
+        TemporalType type = TemporalTypeClassifier.classify(udts.getFirst());
+        if (type != TemporalType.TIMESTAMPTZ) {
+            throw new IllegalStateException(
+                    "Destination column '" + UPDATED_AT_COLUMN + "' on " + target.qualified()
+                            + " must be timestamptz (found '" + udts.getFirst()
+                            + "'). Refusing to ALTER automatically.");
         }
     }
 
@@ -382,20 +456,34 @@ public class SchemaIntrospectionService {
         }
     }
 
-    private String requireUpdatedAtColumn(List<ColumnMetadata> columns, String configured) {
+    private WatermarkColumnSpec requireUpdatedAtColumn(List<ColumnMetadata> columns,
+                                                       String configured,
+                                                       LayerConfig config) {
         String name = requireConfiguredColumn(columns, configured, "updated-at-column");
         ColumnMetadata column = columns.stream()
                 .filter(col -> col.name().equals(name))
                 .findFirst()
                 .orElseThrow();
-        String udt = column.udtName() == null ? "" : column.udtName().toLowerCase(Locale.ROOT);
-        if (!UPDATED_AT_UDT_NAMES.contains(udt)) {
+        TemporalType type = TemporalTypeClassifier.classify(column.udtName());
+        if (!type.isWatermarkSupported()) {
             throw new IllegalStateException(
                     "updated-at-column '" + name + "' has type '" + column.udtName()
                             + "'. Expected timestamp, timestamptz or date "
-                            + "(it will be stored as '" + UPDATED_AT_COLUMN + "' on geo-target).");
+                            + "(it will be stored as '" + UPDATED_AT_COLUMN
+                            + "' TIMESTAMPTZ on geo-target).");
         }
-        return name;
+        SourceTemporalPolicy policy = batchTemporalProperties.resolvePolicy(
+                config.getSourceTimezone(),
+                "batch.layers.source-timezone for " + config.getSourceTable()
+        );
+        if (type == TemporalType.DATE) {
+            log.warn(
+                    "updated-at-column '{}' on {} is DATE — watermark granularity is daily",
+                    name,
+                    config.getSourceTable()
+            );
+        }
+        return WatermarkColumnSpec.of(name, type, policy);
     }
 
     private void warnIfHigherDimensional(QualifiedTable table, GeometryInfo geometryInfo) {

@@ -4,6 +4,9 @@ import br.car.dsp_batch.batch.config.JobTableConfig;
 import br.car.dsp_batch.batch.dto.AdministrativeUnitDTO;
 import br.car.dsp_batch.geometry.GeometrySql;
 import br.car.dsp_batch.sync.WatermarkSql;
+import br.car.dsp_batch.temporal.CommonTemporalHandler;
+import br.car.dsp_batch.temporal.TemporalTypeClassifier;
+import br.car.dsp_batch.temporal.WatermarkColumnSpec;
 import org.springframework.batch.item.database.Order;
 import org.springframework.batch.item.database.PagingQueryProvider;
 import org.springframework.batch.item.database.support.PostgresPagingQueryProvider;
@@ -11,11 +14,13 @@ import org.springframework.jdbc.core.RowMapper;
 
 import javax.sql.DataSource;
 import java.sql.ResultSet;
+import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -39,19 +44,20 @@ public class AdministrativeUnitGeoserverReader
                                              int pageSize,
                                              JobTableConfig tableConfig,
                                              Instant watermark,
-                                             String updatedAtColumn,
+                                             WatermarkColumnSpec watermarkColumn,
                                              String readerName) {
         super(dataSource, minId, maxId, pageSize);
         this.setName(readerName);
         boolean useIdRange = minId != null && maxId != null;
-        this.setQueryProvider(createQueryProvider(tableConfig, useIdRange, watermark, updatedAtColumn));
+        this.setQueryProvider(createQueryProvider(
+                tableConfig, useIdRange, watermark, watermarkColumn));
         this.setRowMapper(new AdministrativeUnitRowMapper(tableConfig));
     }
 
     private PagingQueryProvider createQueryProvider(JobTableConfig tableConfig,
                                                     boolean useIdRange,
                                                     Instant watermark,
-                                                    String updatedAtColumn) {
+                                                    WatermarkColumnSpec watermarkColumn) {
         String partitionColumn = tableConfig.getPartitionColumn();
         String geom = tableConfig.getGeometryColumn();
         List<String> persistColumns = new ArrayList<>(tableConfig.getAllBusinessPersistColumns());
@@ -88,8 +94,8 @@ public class AdministrativeUnitGeoserverReader
             where.append(" AND (").append(configWhere).append(")");
         }
 
-        if (updatedAtColumn != null && !updatedAtColumn.isBlank()) {
-            String updatedAtFilter = WatermarkSql.buildUpdatedAtFilter(updatedAtColumn.trim(), watermark);
+        if (watermarkColumn != null) {
+            String updatedAtFilter = WatermarkSql.buildUpdatedAtFilter(watermarkColumn, watermark);
             where.append(" AND ").append(updatedAtFilter);
         }
 
@@ -124,8 +130,22 @@ public class AdministrativeUnitGeoserverReader
             dto.setId(rs.getObject(tableConfig.getPrimaryKey()));
             dto.setGeometryGeoJson(rs.getString("geometry_geo_json"));
 
+            ResultSetMetaData meta = rs.getMetaData();
+            Map<String, String> udtByLabel = new HashMap<>();
+            for (int i = 1; i <= meta.getColumnCount(); i++) {
+                String label = meta.getColumnLabel(i);
+                if (label != null) {
+                    udtByLabel.put(label.toLowerCase(Locale.ROOT), meta.getColumnTypeName(i));
+                }
+            }
+
             for (String column : tableConfig.getAllBusinessPersistColumns()) {
-                dto.putAttribute(column, rs.getObject(column));
+                String udt = udtByLabel.get(column.toLowerCase(Locale.ROOT));
+                if (udt != null && TemporalTypeClassifier.isTemporal(udt)) {
+                    dto.putAttribute(column, CommonTemporalHandler.read(rs, column, udt));
+                } else {
+                    dto.putAttribute(column, rs.getObject(column));
+                }
             }
 
             return dto;

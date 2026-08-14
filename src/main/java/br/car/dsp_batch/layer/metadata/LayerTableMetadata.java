@@ -1,5 +1,7 @@
 package br.car.dsp_batch.layer.metadata;
 
+import br.car.dsp_batch.temporal.WatermarkColumnSpec;
+
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -23,13 +25,17 @@ public record LayerTableMetadata(
         String primaryKeyColumn,
         String geometryColumn,
         String areaOfInterestIdSourceColumn,
-        String updatedAtSourceColumn,
+        WatermarkColumnSpec watermarkColumn,
         String labelSourceColumn,
         int srid,
         List<ColumnMetadata> columns,
         List<IndexMetadata> indexes,
         String whereClause
 ) {
+
+    public String updatedAtSourceColumn() {
+        return watermarkColumn.sourceColumn();
+    }
 
     public List<String> sourceNonGeometryColumnNames() {
         List<String> names = new ArrayList<>();
@@ -79,7 +85,7 @@ public record LayerTableMetadata(
         if (sourceColumnName.equals(geometryColumn)) {
             return GEOMETRY_COLUMN;
         }
-        if (sourceColumnName.equals(updatedAtSourceColumn)) {
+        if (sourceColumnName.equals(updatedAtSourceColumn())) {
             return UPDATED_AT_COLUMN;
         }
         if (sourceColumnName.equals(areaOfInterestIdSourceColumn)) {
@@ -99,7 +105,7 @@ public record LayerTableMetadata(
             return geometryColumn;
         }
         if (UPDATED_AT_COLUMN.equals(targetColumnName)) {
-            return updatedAtSourceColumn;
+            return updatedAtSourceColumn();
         }
         if (AREA_OF_INTEREST_ID_COLUMN.equals(targetColumnName)) {
             return areaOfInterestIdSourceColumn;
@@ -120,5 +126,14 @@ public record LayerTableMetadata(
 
     public String qualifiedTargetTable() {
         return targetTable.qualified();
+    }
+
+    public ColumnMetadata findColumn(String sourceColumnName) {
+        for (ColumnMetadata column : columns) {
+            if (column.name().equals(sourceColumnName)) {
+                return column;
+            }
+        }
+        return null;
     }
 }

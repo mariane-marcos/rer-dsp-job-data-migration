@@ -5,6 +5,7 @@ import br.car.dsp_batch.layer.metadata.ColumnMetadata;
 import br.car.dsp_batch.layer.metadata.IndexMetadata;
 import br.car.dsp_batch.layer.metadata.LayerTableMetadata;
 import br.car.dsp_batch.layer.metadata.QualifiedTable;
+import br.car.dsp_batch.temporal.TemporalTestFixtures;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -25,7 +26,7 @@ class LayerTableDdlBuilderTest {
         assertTrue(ddl.contains("\"id\" varchar(80)"));
         assertTrue(ddl.contains("\"label\" varchar(255)"));
         assertTrue(ddl.contains("\"area_of_interest_id\" varchar(80)"));
-        assertTrue(ddl.contains("\"updated_at\""));
+        assertTrue(ddl.contains("\"updated_at\" timestamptz"));
         assertTrue(ddl.contains("\"codigo\" varchar(40)"));
         assertTrue(ddl.contains("\"geom\" geometry(Geometry, 4674)"));
         assertTrue(!ddl.contains("\"the_geom\""));
@@ -34,6 +35,31 @@ class LayerTableDdlBuilderTest {
         assertTrue(!ddl.contains("\"nome\""));
         assertTrue(ddl.contains("PRIMARY KEY (\"id\")"));
         assertTrue(!ddl.contains("\"cod_imovel\""));
+    }
+
+    @Test
+    void buildCreateTable_ForcesUpdatedAtTimestamptzEvenWhenSourceIsTimestamp() {
+        List<ColumnMetadata> columns = List.of(
+                new ColumnMetadata("id_parcela", "varchar", 80, null, null, false, false),
+                new ColumnMetadata("cod_imovel", "varchar", 80, null, null, false, false),
+                new ColumnMetadata("nome", "varchar", 255, null, null, true, false),
+                new ColumnMetadata("data_atualizacao", "timestamp", null, null, null, false, false),
+                new ColumnMetadata("the_geom", "geometry", null, null, null, true, true)
+        );
+        LayerTableMetadata metadata = metadata(
+                "id_parcela",
+                "the_geom",
+                "cod_imovel",
+                "data_atualizacao",
+                "nome",
+                columns,
+                List.of()
+        );
+
+        String ddl = builder.buildCreateTable(metadata);
+
+        assertTrue(ddl.contains("\"updated_at\" timestamptz"));
+        assertTrue(!ddl.contains("\"updated_at\" timestamp\""));
     }
 
     @Test
@@ -63,15 +89,17 @@ class LayerTableDdlBuilderTest {
     }
 
     @Test
-    void buildEnsureUpdatedAtColumn_AddsCanonicalColumn() {
-        String ddl = builder.buildEnsureUpdatedAtColumn(sampleMetadata());
-        assertTrue(ddl.contains("ALTER TABLE dsp.parcelas ADD COLUMN IF NOT EXISTS \"updated_at\" timestamptz"));
-    }
+    void buildStatements_ReturnsCreateTableAndIndexes() {
+        LayerTableMetadata metadata = sampleMetadata();
 
-    @Test
-    void buildEnsureLabelColumn_AddsCanonicalColumn() {
-        String ddl = builder.buildEnsureLabelColumn(sampleMetadata());
-        assertTrue(ddl.contains("ALTER TABLE dsp.parcelas ADD COLUMN IF NOT EXISTS \"label\" varchar(255)"));
+        List<String> statements = builder.buildStatements(metadata);
+
+        assertTrue(statements.size() >= 4);
+        assertTrue(statements.getFirst().startsWith("CREATE TABLE"));
+        assertTrue(statements.stream().anyMatch(s -> s.contains("USING GIST")));
+        assertTrue(statements.stream().anyMatch(s -> s.contains(LayerConfig.AREA_OF_INTEREST_ID_COLUMN)));
+        assertTrue(statements.stream().anyMatch(s -> s.contains(LayerConfig.UPDATED_AT_COLUMN)
+                && s.startsWith("CREATE INDEX")));
     }
 
     @Test
@@ -192,24 +220,6 @@ class LayerTableDdlBuilderTest {
         assertTrue(indexes.isEmpty());
     }
 
-    @Test
-    void buildStatements_ReturnsCreateTableAndIndexes() {
-        LayerTableMetadata metadata = sampleMetadata();
-
-        List<String> statements = builder.buildStatements(metadata);
-
-        assertTrue(statements.size() >= 5);
-        assertTrue(statements.getFirst().startsWith("CREATE TABLE"));
-        assertTrue(statements.stream().anyMatch(s -> s.contains("ADD COLUMN IF NOT EXISTS")
-                && s.contains(LayerConfig.UPDATED_AT_COLUMN)));
-        assertTrue(statements.stream().anyMatch(s -> s.contains("ADD COLUMN IF NOT EXISTS")
-                && s.contains(LayerConfig.LABEL_COLUMN)));
-        assertTrue(statements.stream().anyMatch(s -> s.contains("USING GIST")));
-        assertTrue(statements.stream().anyMatch(s -> s.contains(LayerConfig.AREA_OF_INTEREST_ID_COLUMN)));
-        assertTrue(statements.stream().anyMatch(s -> s.contains(LayerConfig.UPDATED_AT_COLUMN)
-                && s.startsWith("CREATE INDEX")));
-    }
-
     private LayerTableMetadata sampleMetadata() {
         List<ColumnMetadata> columns = List.of(
                 new ColumnMetadata("id_parcela", "varchar", 80, null, null, false, false),
@@ -245,7 +255,7 @@ class LayerTableDdlBuilderTest {
                 primaryKey,
                 geometryColumn,
                 aoiColumn,
-                updatedAtColumn,
+                TemporalTestFixtures.timestamptz(updatedAtColumn),
                 labelColumn,
                 4674,
                 columns,

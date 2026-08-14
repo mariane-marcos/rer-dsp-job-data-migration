@@ -52,6 +52,7 @@ server:
   port: 8086
 
 batch:
+  source-timezone: America/Sao_Paulo
   admin-unit:
     level-1:
       source-table: source_admin_units.source_l1_continents
@@ -60,9 +61,6 @@ batch:
       geometry-column: source_continent_geom
       updated-at-column: source_updated_at
       where-clause: "1=1"
-      comparison-columns:
-        - source_continent_name
-        - source_updated_at
       persist-columns:
         - source_continent_pk
         - source_continent_name
@@ -74,7 +72,6 @@ batch:
         source_updated_at: target_updated_at
       layer-name: source-continents-geoserver-layer
       srid: 4326
-      change-detection-strategy: WATERMARK
       # sync-key default: admin_unit_level_1
     level-2:
       source-table: source_admin_units.source_l2_countries
@@ -84,10 +81,6 @@ batch:
       geometry-column: source_country_geom
       updated-at-column: source_updated_at
       where-clause: "1=1"
-      comparison-columns:
-        - source_country_name
-        - source_continent_fk
-        - source_updated_at
       persist-columns:
         - source_country_pk
         - source_country_name
@@ -101,7 +94,6 @@ batch:
         source_updated_at: target_updated_at
       layer-name: source-countries-geoserver-layer
       srid: 4326
-      change-detection-strategy: WATERMARK
       # sync-key default: admin_unit_level_2
     level-3:
       source-table: source_admin_units.source_l3_admin_areas
@@ -111,10 +103,6 @@ batch:
       geometry-column: source_area_geom
       updated-at-column: source_updated_at
       where-clause: "1=1"
-      comparison-columns:
-        - source_area_name
-        - source_country_fk
-        - source_updated_at
       persist-columns:
         - source_area_pk
         - source_area_name
@@ -128,54 +116,36 @@ batch:
         source_updated_at: target_updated_at
       layer-name: source-admin-areas-geoserver-layer
       srid: 4326
-      change-detection-strategy: WATERMARK
       # sync-key default: admin_unit_level_3
   area-of-interest:
     source-table: source_properties.source_property
     target-table: target_properties.target_property
     primary-key: source_pk
-    geometry-column: source_geom
+    creation-date-column: source_created_at
     updated-at-column: source_updated_at
+    commune-id-column: source_territory_level_3_fk
+    total-area-column: source_area
+    geometry-column: source_geom
     where-clause: "1=1"
-    comparison-columns:
-      - source_updated_at
-      - source_territory_level_3_fk
-      - source_area
-    persist-columns:
-      - source_pk
-      - source_created_at
-      - source_updated_at
-      - source_territory_level_3_fk
-      - source_area
-    # business-only-persist-columns:   # Optional: remove if you have no theme KPIs
+    # persist-columns:
+    #   - source_optional_attr
+    # business-only-persist-columns:
     #   - source_theme_1
     #   - source_theme_2
     #   - source_theme_3
     #   - source_theme_4
-    column-mapping:
-      source_pk: target_property_id
-      source_created_at: target_registration_date
-      source_updated_at: target_alteration_date
-      source_territory_level_3_fk: target_territory_level_3_ref
-      source_area: target_area
-      source_geom: target_property_geometry
-      # source_theme_1: target_theme_1
-      # source_theme_2: target_theme_2
-      # source_theme_3: target_theme_3
-      # source_theme_4: target_theme_4
     layer-name: source-properties-geoserver-layer
     srid: 4326
-    change-detection-strategy: WATERMARK
+    # sync-key default: area_of_interest
 
-  # Layers: the job creates dsp.<table> on geo-target automatically.
-  # Required source columns map to fixed target names:
+  # Layers: setup step creates dsp.<table> on geo-target automatically.
+  # Mandatory source columns map to fixed target names:
   #   primary-key -> id
   #   area-of-interest-id-column -> area_of_interest_id
   #   updated-at-column -> updated_at
   #   label-column -> label
   #   geometry-column -> geom
   # Optional extras in persist-columns keep the same name on the target.
-  # Incremental watermark is stored in batch_metadata.dsp_sync_state.
   layers:
     - source-table: source_layers.<table_name>
       primary-key: source_pk
@@ -225,4 +195,3 @@ execution-jobs:
 logging:
   level:
     br.car.dsp_batch: INFO
-    br.car.dsp_batch.batch.strategy: INFO

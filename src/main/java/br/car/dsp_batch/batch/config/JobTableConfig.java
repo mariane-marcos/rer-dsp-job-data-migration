@@ -1,16 +1,12 @@
 package br.car.dsp_batch.batch.config;
 
-import br.car.dsp_batch.batch.config.strategy.ChangeDetectionStrategyType;
-
-import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Configuration contract for geographic administrative unit table synchronization.
- * Concrete implementations supply table-specific values (typically externalized).
+ * Configuration contract for geographic table synchronization (watermark-only).
  */
 public interface JobTableConfig {
 
@@ -36,9 +32,6 @@ public interface JobTableConfig {
 
     /** WHERE clause fragment used when reading active source records (without the WHERE keyword). */
     String getWhereClause();
-
-    /** Non-geometry columns compared during change detection. */
-    List<String> getComparisonColumns();
 
     /**
      * Columns persisted on both business and geo targets (excluding geometry).
@@ -83,44 +76,22 @@ public interface JobTableConfig {
 
     /**
      * Geometry SRID configured per job in YAML (required; must be a positive integer).
-     * No application-wide default — each adopter sets the value for their coordinate system.
      */
     int getSrid();
 
-    /** Change detection strategy to use for this job. */
-    default ChangeDetectionStrategyType getChangeDetectionStrategy() {
-        return ChangeDetectionStrategyType.DEFAULT;
-    }
+    /** Source column holding the last update timestamp for watermark sync. */
+    String getUpdatedAtColumn();
 
     /**
-     * Source column holding the last update timestamp for {@link ChangeDetectionStrategyType#WATERMARK}.
+     * Optional IANA timezone override for TIMESTAMP/DATE watermark columns.
+     * Falls back to {@code batch.source-timezone}.
      */
-    default String getUpdatedAtColumn() {
+    default String getSourceTimezone() {
         return null;
     }
 
-    /**
-     * Key used in {@code dsp_sync_state} for {@link ChangeDetectionStrategyType#WATERMARK}.
-     */
-    default String getSyncKey() {
-        return null;
-    }
-
-    /**
-     * Start of the inclusive date interval used by date-range change detection.
-     * {@code null} when the strategy does not need a date filter.
-     */
-    default LocalDate getStartDate() {
-        return null;
-    }
-
-    /**
-     * End of the inclusive date interval used by date-range change detection.
-     * {@code null} when the strategy does not need a date filter.
-     */
-    default LocalDate getEndDate() {
-        return null;
-    }
+    /** Key used in {@code dsp_sync_state}. */
+    String getSyncKey();
 
     /** Resolves the target column name for a given source column. */
     default String resolveTargetColumn(String sourceColumn) {

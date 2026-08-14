@@ -71,6 +71,11 @@ public class LayerConfig {
     private List<String> persistColumns = new ArrayList<>();
     private String whereClause = "1=1";
     private Integer srid;
+    /**
+     * Optional IANA timezone override for interpreting TIMESTAMP/DATE watermark columns.
+     * Falls back to {@code batch.source-timezone}.
+     */
+    private String sourceTimezone;
     private boolean enabled = true;
 
     public QualifiedTable resolveSourceTable() {
@@ -115,5 +120,74 @@ public class LayerConfig {
 
     private static String trimRequired(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    /**
+     * Validates YAML contract for this layer (required mappings and optional extras).
+     */
+    public void validate() {
+        requireNonBlank("source-table", sourceTable);
+        requireQualifiedTable(sourceTable);
+        requireNonBlank("primary-key", primaryKey);
+        requireNonBlank("area-of-interest-id-column", areaOfInterestIdColumn);
+        requireNonBlank("updated-at-column", updatedAtColumn);
+        requireNonBlank("label-column", labelColumn);
+        requireNonBlank("geometry-column", geometryColumn);
+        validatePersistColumns();
+    }
+
+    private void validatePersistColumns() {
+        if (persistColumns == null || persistColumns.isEmpty()) {
+            return;
+        }
+
+        Set<String> requiredSource = Set.of(
+                primaryKey.trim(),
+                areaOfInterestIdColumn.trim(),
+                updatedAtColumn.trim(),
+                labelColumn.trim(),
+                geometryColumn.trim()
+        );
+
+        Set<String> seen = new LinkedHashSet<>();
+        for (String raw : persistColumns) {
+            if (raw == null || raw.isBlank()) {
+                throw new IllegalStateException(
+                        "persist-columns must not contain blank entries (source-table=" + sourceTable + ")");
+            }
+            String column = raw.trim();
+            if (!seen.add(column)) {
+                throw new IllegalStateException(
+                        "duplicate persist-columns entry '" + column + "' (source-table=" + sourceTable + ")");
+            }
+            if (requiredSource.contains(column)) {
+                throw new IllegalStateException(
+                        "persist-columns entry '" + column
+                                + "' duplicates a required column mapping (source-table=" + sourceTable + ")");
+            }
+            String lower = column.toLowerCase(java.util.Locale.ROOT);
+            if (CANONICAL_TARGET_COLUMNS.contains(lower) || CANONICAL_TARGET_COLUMNS.contains(column)) {
+                throw new IllegalStateException(
+                        "persist-columns entry '" + column
+                                + "' collides with a canonical target column name "
+                                + CANONICAL_TARGET_COLUMNS + " (source-table=" + sourceTable + ")");
+            }
+        }
+    }
+
+    private static void requireNonBlank(String field, String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalStateException("batch.layers: '" + field + "' is required");
+        }
+    }
+
+    private static void requireQualifiedTable(String value) {
+        try {
+            QualifiedTable.parse(value.trim());
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalStateException(
+                    "batch.layers: invalid 'source-table' value '" + value + "'. " + ex.getMessage(),
+                    ex);
+        }
     }
 }

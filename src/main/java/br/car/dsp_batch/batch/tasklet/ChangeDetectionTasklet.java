@@ -1,7 +1,13 @@
 package br.car.dsp_batch.batch.tasklet;
 
 import br.car.dsp_batch.batch.config.JobTableConfig;
-import br.car.dsp_batch.batch.config.strategy.ChangeDetectionStrategy;
+import br.car.dsp_batch.batch.config.JobTableConfigValidator;
+import br.car.dsp_batch.service.AdministrativeUnitPersistenceService;
+import br.car.dsp_batch.sync.WatermarkChangeDetectionEngine;
+import br.car.dsp_batch.sync.WatermarkTableSpecs;
+import br.car.dsp_batch.temporal.BatchTemporalProperties;
+import br.car.dsp_batch.temporal.TemporalSchemaSupport;
+import br.car.dsp_batch.temporal.WatermarkColumnSpec;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.StepContribution;
 import org.springframework.batch.core.scope.context.ChunkContext;
@@ -10,7 +16,7 @@ import org.springframework.batch.repeat.RepeatStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
- * Tasklet that delegates change detection to a {@link ChangeDetectionStrategy}.
+ * Runs incremental watermark change detection for admin unit / AOI tables.
  */
 @Slf4j
 public class ChangeDetectionTasklet implements Tasklet {
@@ -19,25 +25,55 @@ public class ChangeDetectionTasklet implements Tasklet {
     private final JdbcTemplate targetJdbc;
     private final JdbcTemplate geoTargetJdbc;
     private final JobTableConfig tableConfig;
-    private final ChangeDetectionStrategy strategy;
+    private final WatermarkChangeDetectionEngine engine;
+    private final TemporalSchemaSupport temporalSchemaSupport;
+    private final BatchTemporalProperties batchTemporalProperties;
 
     public ChangeDetectionTasklet(JdbcTemplate sourceJdbc,
                                   JdbcTemplate targetJdbc,
                                   JdbcTemplate geoTargetJdbc,
                                   JobTableConfig tableConfig,
-                                  ChangeDetectionStrategy strategy) {
+                                  WatermarkChangeDetectionEngine engine,
+                                  TemporalSchemaSupport temporalSchemaSupport,
+                                  BatchTemporalProperties batchTemporalProperties) {
         this.sourceJdbc = sourceJdbc;
         this.targetJdbc = targetJdbc;
         this.geoTargetJdbc = geoTargetJdbc;
         this.tableConfig = tableConfig;
-        this.strategy = strategy;
+        this.engine = engine;
+        this.temporalSchemaSupport = temporalSchemaSupport;
+        this.batchTemporalProperties = batchTemporalProperties;
     }
 
     @Override
     public RepeatStatus execute(StepContribution contribution, ChunkContext chunkContext) {
-        log.info("Executing change detection with strategy={} for table={}",
-                strategy.getType(), tableConfig.getSourceTable());
-        strategy.detectChanges(sourceJdbc, targetJdbc, geoTargetJdbc, tableConfig, chunkContext);
+        log.info("Executing watermark change detection for table={}", tableConfig.getSourceTable());
+        AdministrativeUnitPersistenceService.requirePositiveSrid(tableConfig);
+        JobTableConfigValidator.requireWatermarkFields(tableConfig);
+
+        WatermarkColumnSpec watermarkColumn = temporalSchemaSupport.resolveWatermarkColumn(
+                sourceJdbc,
+                tableConfig.getSourceTable(),
+                tableConfig.getUpdatedAtColumn(),
+                batchTemporalProperties.resolvePolicy(
+                        tableConfig.getSourceTimezone(),
+                        "batch.*.source-timezone for " + tableConfig.getSourceTable()
+                )
+        );
+
+        String targetUpdatedAt = tableConfig.resolveTargetColumn(tableConfig.getUpdatedAtColumn());
+        temporalSchemaSupport.requireDestinationTimestamptz(
+                targetJdbc, tableConfig.getTargetTable(), targetUpdatedAt);
+        temporalSchemaSupport.requireDestinationTimestamptz(
+                geoTargetJdbc, tableConfig.getTargetTable(), targetUpdatedAt);
+
+        engine.detectChanges(
+                sourceJdbc,
+                geoTargetJdbc,
+                targetJdbc,
+                WatermarkTableSpecs.fromJobTableConfig(tableConfig, watermarkColumn),
+                chunkContext
+        );
         return RepeatStatus.FINISHED;
     }
 }

@@ -6,8 +6,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.stereotype.Repository;
 
-import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Optional;
 
 /**
@@ -19,10 +20,10 @@ public class SyncStateRepository {
     private static final RowMapper<SyncState> ROW_MAPPER = (rs, rowNum) -> new SyncState(
             rs.getString("sync_key"),
             rs.getString("source_table"),
-            toInstant(rs.getTimestamp("watermark_updated_at")),
-            toInstant(rs.getTimestamp("last_success_at")),
+            toInstant(rs.getObject("watermark_updated_at", OffsetDateTime.class)),
+            toInstant(rs.getObject("last_success_at", OffsetDateTime.class)),
             (Long) rs.getObject("last_job_execution_id"),
-            toInstant(rs.getTimestamp("last_orphan_check_at"))
+            toInstant(rs.getObject("last_orphan_check_at", OffsetDateTime.class))
     );
 
     private final JdbcTemplate batchJdbcTemplate;
@@ -78,10 +79,10 @@ public class SyncStateRepository {
                 """,
                 syncKey,
                 sourceTable,
-                toTimestamp(watermarkUpdatedAt),
-                toTimestamp(now),
+                toOffsetDateTime(watermarkUpdatedAt),
+                toOffsetDateTime(now),
                 jobExecutionId,
-                toTimestamp(now)
+                toOffsetDateTime(now)
         );
     }
 
@@ -100,16 +101,16 @@ public class SyncStateRepository {
                 """,
                 syncKey,
                 sourceTable,
-                toTimestamp(now),
-                toTimestamp(now)
+                toOffsetDateTime(now),
+                toOffsetDateTime(now)
         );
     }
 
-    private static Instant toInstant(Timestamp timestamp) {
-        return timestamp == null ? null : timestamp.toInstant();
+    private static Instant toInstant(OffsetDateTime value) {
+        return value == null ? null : value.toInstant();
     }
 
-    private static Timestamp toTimestamp(Instant instant) {
-        return instant == null ? null : Timestamp.from(instant);
+    private static OffsetDateTime toOffsetDateTime(Instant instant) {
+        return instant == null ? null : instant.atOffset(ZoneOffset.UTC);
     }
 }

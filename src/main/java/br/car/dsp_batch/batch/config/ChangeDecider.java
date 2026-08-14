@@ -1,6 +1,6 @@
 package br.car.dsp_batch.batch.config;
 
-import br.car.dsp_batch.batch.config.strategy.DefaultChangeDetectionStrategy;
+import br.car.dsp_batch.sync.WatermarkContextKeys;
 import org.springframework.batch.core.JobExecution;
 import org.springframework.batch.core.StepExecution;
 import org.springframework.batch.core.job.flow.FlowExecutionStatus;
@@ -16,7 +16,7 @@ public class ChangeDecider implements JobExecutionDecider {
     @Override
     public FlowExecutionStatus decide(JobExecution jobExecution, StepExecution stepExecution) {
         Boolean hasChanges = (Boolean) jobExecution.getExecutionContext()
-                .get(DefaultChangeDetectionStrategy.CTX_HAS_CHANGES);
+                .get(WatermarkContextKeys.HAS_CHANGES);
 
         if (hasChanges != null && hasChanges) {
             return new FlowExecutionStatus("PROCESS");
