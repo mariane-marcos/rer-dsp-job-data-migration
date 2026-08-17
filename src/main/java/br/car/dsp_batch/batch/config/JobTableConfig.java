@@ -90,7 +90,7 @@ public interface JobTableConfig {
         return null;
     }
 
-    /** Key used in {@code dsp_sync_state}. */
+    /** Key used in {@code batch_job_execution_sync_state}. */
     String getSyncKey();
 
     /** Resolves the target column name for a given source column. */

@@ -38,7 +38,7 @@ public class SyncStateRepository {
                     """
                     SELECT sync_key, source_table, watermark_updated_at, last_success_at,
                            last_job_execution_id, last_orphan_check_at
-                    FROM dsp_sync_state
+                    FROM batch_job_execution_sync_state
                     WHERE sync_key = ?
                     """,
                     ROW_MAPPER,
@@ -65,14 +65,14 @@ public class SyncStateRepository {
         Instant now = Instant.now();
         batchJdbcTemplate.update(
                 """
-                INSERT INTO dsp_sync_state (
+                INSERT INTO batch_job_execution_sync_state (
                     sync_key, source_table, watermark_updated_at, last_success_at,
                     last_job_execution_id, last_orphan_check_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, NULL, ?)
                 ON CONFLICT (sync_key) DO UPDATE SET
                     source_table = EXCLUDED.source_table,
                     watermark_updated_at = COALESCE(EXCLUDED.watermark_updated_at,
-                        dsp_sync_state.watermark_updated_at),
+                        batch_job_execution_sync_state.watermark_updated_at),
                     last_success_at = EXCLUDED.last_success_at,
                     last_job_execution_id = EXCLUDED.last_job_execution_id,
                     updated_at = EXCLUDED.updated_at
@@ -90,7 +90,7 @@ public class SyncStateRepository {
         Instant now = Instant.now();
         batchJdbcTemplate.update(
                 """
-                INSERT INTO dsp_sync_state (
+                INSERT INTO batch_job_execution_sync_state (
                     sync_key, source_table, watermark_updated_at, last_success_at,
                     last_job_execution_id, last_orphan_check_at, updated_at
                 ) VALUES (?, ?, NULL, NULL, NULL, ?, ?)

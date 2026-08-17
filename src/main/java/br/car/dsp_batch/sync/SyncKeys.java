@@ -1,7 +1,7 @@
 package br.car.dsp_batch.sync;
 
 /**
- * Well-known sync keys stored in {@code dsp_sync_state}.
+ * Well-known sync keys stored in {@code batch_job_execution_sync_state}.
  */
 public final class SyncKeys {
 
