@@ -23,16 +23,31 @@ class AreaOfInterestTableDdlBuilderTest {
         String ddl = builder.buildGeoCreateTable(metadata);
 
         assertTrue(ddl.contains("CREATE TABLE IF NOT EXISTS dsp.area_of_interest"));
-        assertTrue(ddl.contains("\"id\" bigint"));
-        assertTrue(ddl.contains("\"registration_date\""));
+        assertTrue(ddl.contains("\"id\" varchar(255)"));
+        assertTrue(ddl.contains("\"registration_date\" date"));
         assertTrue(ddl.contains("\"updated_at\" timestamptz"));
-        assertTrue(ddl.contains("\"territory_level_3_id\" bigint"));
+        assertTrue(ddl.contains("\"territory_level_3_id\" varchar(64)"));
         assertTrue(ddl.contains("\"area\""));
         assertTrue(ddl.contains("\"geom\" geometry(Geometry, 4674)"));
         assertTrue(!ddl.contains("\"creation_date\""));
         assertTrue(!ddl.contains("\"commune_id\""));
         assertTrue(!ddl.contains("\"total_area_ha\""));
         assertTrue(ddl.contains("PRIMARY KEY (\"id\")"));
+    }
+
+    @Test
+    void buildGeoCreateTable_ForcesVarcharIdsEvenWhenSourceIsBigint() {
+        AreaOfInterestTableMetadata metadata = sampleMetadata(List.of());
+
+        String geoDdl = builder.buildGeoCreateTable(metadata);
+        String businessDdl = builder.buildBusinessCreateTable(metadata);
+
+        assertTrue(geoDdl.contains("\"id\" varchar(255)"));
+        assertTrue(geoDdl.contains("\"territory_level_3_id\" varchar(64)"));
+        assertTrue(!geoDdl.contains("\"id\" bigint"));
+        assertTrue(!geoDdl.contains("\"territory_level_3_id\" bigint"));
+        assertTrue(businessDdl.contains("\"id\" varchar(255)"));
+        assertTrue(businessDdl.contains("\"territory_level_3_id\" varchar(64)"));
     }
 
     @Test
@@ -58,6 +73,10 @@ class AreaOfInterestTableDdlBuilderTest {
         assertTrue(ddl.contains("\"centroid_coordinates\" geometry(Point, 4674)"));
         assertTrue(!ddl.contains("\"geom\""));
         assertTrue(ddl.contains("\"territory_level_3_id\""));
+        assertTrue(ddl.contains("\"theme_1\" numeric"));
+        assertTrue(ddl.contains("\"theme_2\" numeric"));
+        assertTrue(ddl.contains("\"theme_3\" numeric"));
+        assertTrue(ddl.contains("\"theme_4\" numeric"));
     }
 
     private static AreaOfInterestTableMetadata sampleMetadata(List<String> businessOnlySourceColumns) {

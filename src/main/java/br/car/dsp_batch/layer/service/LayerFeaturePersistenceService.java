@@ -1,6 +1,7 @@
 package br.car.dsp_batch.layer.service;
 
 import br.car.dsp_batch.geometry.GeometrySql;
+import br.car.dsp_batch.layer.config.LayerConfig;
 import br.car.dsp_batch.layer.dto.LayerFeatureRecord;
 import br.car.dsp_batch.layer.metadata.ColumnMetadata;
 import br.car.dsp_batch.layer.metadata.LayerTableMetadata;
@@ -114,6 +115,9 @@ public class LayerFeaturePersistenceService {
                         var instant = WatermarkTemporalBridge.toInstant(
                                 value, metadata.watermarkColumn());
                         ps.setObject(index++, WatermarkTemporalBridge.toDspTimestamptz(instant));
+                    } else if (LayerConfig.ID_COLUMN.equals(targetColumn)
+                            || LayerConfig.AREA_OF_INTEREST_ID_COLUMN.equals(targetColumn)) {
+                        ps.setString(index++, value == null ? null : String.valueOf(value));
                     } else {
                         String udt = udtBySource.get(sourceColumn);
                         if (udt != null && TemporalTypeClassifier.isTemporal(udt)) {

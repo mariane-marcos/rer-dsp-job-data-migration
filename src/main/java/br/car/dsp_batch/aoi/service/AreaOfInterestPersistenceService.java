@@ -194,6 +194,11 @@ public class AreaOfInterestPersistenceService {
             ps.setObject(index++, WatermarkTemporalBridge.toDspTimestamptz(instant));
             return index;
         }
+        if (AreaOfInterestConfig.ID_COLUMN.equals(targetColumn)
+                || AreaOfInterestConfig.TERRITORY_LEVEL_3_ID_COLUMN.equals(targetColumn)) {
+            ps.setString(index++, value == null ? null : String.valueOf(value));
+            return index;
+        }
         String udt = udtBySource.get(sourceColumn);
         if (udt != null && TemporalTypeClassifier.isTemporal(udt)) {
             CommonTemporalHandler.write(ps, index++, value, udt);

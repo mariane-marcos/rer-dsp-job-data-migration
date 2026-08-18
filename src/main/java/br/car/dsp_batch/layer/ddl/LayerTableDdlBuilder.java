@@ -66,10 +66,7 @@ public class LayerTableDdlBuilder {
                 continue;
             }
 
-            // Canonical updated_at on DSP is always TIMESTAMPTZ, regardless of source UDT.
-            String ddlType = LayerConfig.UPDATED_AT_COLUMN.equals(targetColumnName)
-                    ? "timestamptz"
-                    : typeMapper.toDdlType(column);
+            String ddlType = resolveDdlType(targetColumnName, column);
             columnDefinitions.add(quote(targetColumnName) + " " + ddlType);
         }
 
@@ -80,6 +77,22 @@ public class LayerTableDdlBuilder {
                 + " (\n    "
                 + String.join(",\n    ", columnDefinitions)
                 + "\n)";
+    }
+
+    /**
+     * DSP contract types, independent of the type at the origin.
+     * {@code id} and {@code area_of_interest_id} in VARCHAR to align with the AOI;
+     * {@code updated_at} in timestamptz.
+     */
+    private String resolveDdlType(String targetColumnName, ColumnMetadata column) {
+        if (LayerConfig.UPDATED_AT_COLUMN.equals(targetColumnName)) {
+            return "timestamptz";
+        }
+        if (LayerConfig.ID_COLUMN.equals(targetColumnName)
+                || LayerConfig.AREA_OF_INTEREST_ID_COLUMN.equals(targetColumnName)) {
+            return "varchar(255)";
+        }
+        return typeMapper.toDdlType(column);
     }
 
     public String buildGeometryIndex(LayerTableMetadata metadata) {

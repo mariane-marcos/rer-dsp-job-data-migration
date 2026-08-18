@@ -23,9 +23,9 @@ class LayerTableDdlBuilderTest {
         String ddl = builder.buildCreateTable(metadata);
 
         assertTrue(ddl.contains("CREATE TABLE IF NOT EXISTS dsp.parcelas"));
-        assertTrue(ddl.contains("\"id\" varchar(80)"));
+        assertTrue(ddl.contains("\"id\" varchar(255)"));
         assertTrue(ddl.contains("\"label\" varchar(255)"));
-        assertTrue(ddl.contains("\"area_of_interest_id\" varchar(80)"));
+        assertTrue(ddl.contains("\"area_of_interest_id\" varchar(255)"));
         assertTrue(ddl.contains("\"updated_at\" timestamptz"));
         assertTrue(ddl.contains("\"codigo\" varchar(40)"));
         assertTrue(ddl.contains("\"geom\" geometry(Geometry, 4674)"));
@@ -60,6 +60,33 @@ class LayerTableDdlBuilderTest {
 
         assertTrue(ddl.contains("\"updated_at\" timestamptz"));
         assertTrue(!ddl.contains("\"updated_at\" timestamp\""));
+    }
+
+    @Test
+    void buildCreateTable_ForcesVarcharIdsEvenWhenSourceIsBigint() {
+        List<ColumnMetadata> columns = List.of(
+                new ColumnMetadata("id_parcela", "int8", null, null, null, false, false),
+                new ColumnMetadata("cod_imovel", "int8", null, null, null, false, false),
+                new ColumnMetadata("nome", "varchar", 255, null, null, true, false),
+                new ColumnMetadata("data_atualizacao", "timestamp", null, null, null, false, false),
+                new ColumnMetadata("the_geom", "geometry", null, null, null, true, true)
+        );
+        LayerTableMetadata metadata = metadata(
+                "id_parcela",
+                "the_geom",
+                "cod_imovel",
+                "data_atualizacao",
+                "nome",
+                columns,
+                List.of()
+        );
+
+        String ddl = builder.buildCreateTable(metadata);
+
+        assertTrue(ddl.contains("\"id\" varchar(255)"));
+        assertTrue(ddl.contains("\"area_of_interest_id\" varchar(255)"));
+        assertTrue(!ddl.contains("\"id\" bigint"));
+        assertTrue(!ddl.contains("\"area_of_interest_id\" bigint"));
     }
 
     @Test

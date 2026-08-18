@@ -28,6 +28,8 @@ public class AreaOfInterestConfig {
     public static final String TERRITORY_LEVEL_3_ID_COLUMN = "territory_level_3_id";
     public static final String AREA_COLUMN = "area";
     public static final String GEOMETRY_COLUMN = "geom";
+    public static final List<String> KPI_THEME_COLUMNS = List.of(
+            "theme_1", "theme_2", "theme_3", "theme_4");
 
     public static final Set<String> CANONICAL_TARGET_COLUMNS = Set.of(
             ID_COLUMN,

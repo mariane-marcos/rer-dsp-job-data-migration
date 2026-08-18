@@ -99,12 +99,30 @@ public class AreaOfInterestTableDdlBuilder {
                 continue;
             }
 
-            String ddlType = AreaOfInterestConfig.UPDATED_AT_COLUMN.equals(targetColumnName)
-                    ? "timestamptz"
-                    : typeMapper.toDdlType(column);
+            String ddlType = resolveDdlType(targetColumnName, column);
             columnDefinitions.add(quote(targetColumnName) + " " + ddlType);
         }
+        if (includeBusinessOnly) {
+            for (String theme : AreaOfInterestConfig.KPI_THEME_COLUMNS) {
+                if (emittedTargetColumns.add(theme)) {
+                    columnDefinitions.add(quote(theme) + " numeric");
+                }
+            }
+        }
         return columnDefinitions;
+    }
+
+    private String resolveDdlType(String targetColumnName, ColumnMetadata column) {
+        if (AreaOfInterestConfig.UPDATED_AT_COLUMN.equals(targetColumnName)) {
+            return "timestamptz";
+        }
+        if (AreaOfInterestConfig.ID_COLUMN.equals(targetColumnName)) {
+            return "varchar(255)";
+        }
+        if (AreaOfInterestConfig.TERRITORY_LEVEL_3_ID_COLUMN.equals(targetColumnName)) {
+            return "varchar(64)";
+        }
+        return typeMapper.toDdlType(column);
     }
 
     public String buildGeometryIndex(AreaOfInterestTableMetadata metadata) {
