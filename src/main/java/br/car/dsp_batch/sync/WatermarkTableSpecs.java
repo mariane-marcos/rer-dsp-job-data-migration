@@ -3,8 +3,7 @@ package br.car.dsp_batch.sync;
 import br.car.dsp_batch.aoi.metadata.AreaOfInterestTableMetadata;
 import br.car.dsp_batch.batch.config.JobTableConfig;
 import br.car.dsp_batch.layer.metadata.LayerTableMetadata;
-import br.car.dsp_batch.temporal.WatermarkColumnSpec;
-
+import br.car.dsp_batch.temporal.TemporalColumnSpecs;
 /**
  * Factories that build {@link WatermarkTableSpec} from domain contracts.
  */
@@ -14,16 +13,16 @@ public final class WatermarkTableSpecs {
     }
 
     public static WatermarkTableSpec fromJobTableConfig(JobTableConfig tableConfig,
-                                                        WatermarkColumnSpec watermarkColumn) {
+                                                        TemporalColumnSpecs temporalColumns) {
         String syncKey = tableConfig.getSyncKey();
         if (syncKey == null || syncKey.isBlank()) {
             throw new IllegalArgumentException(
                     "WATERMARK strategy requires sync-key for table "
                             + tableConfig.getSourceTable());
         }
-        if (watermarkColumn == null) {
+        if (temporalColumns == null || temporalColumns.creationDateColumn() == null) {
             throw new IllegalArgumentException(
-                    "WATERMARK strategy requires watermark column metadata for table "
+                    "WATERMARK strategy requires creation-date-column metadata for table "
                             + tableConfig.getSourceTable());
         }
 
@@ -35,7 +34,8 @@ public final class WatermarkTableSpecs {
                 tableConfig.getSourceTable(),
                 tableConfig.getPrimaryKey(),
                 tableConfig.getGeometryColumn(),
-                watermarkColumn,
+                temporalColumns.creationDateColumn(),
+                temporalColumns.updatedAtColumn(),
                 tableConfig.getWhereClause(),
                 tableConfig.getSrid(),
                 tableConfig.getLayerName(),
@@ -47,18 +47,14 @@ public final class WatermarkTableSpecs {
         );
     }
 
-    /**
-     * For layers: orphan cleanup runs only on geo-target ({@code businessTarget} is null).
-     * Admin-unit jobs use the same logical table name on business and geo databases;
-     * layers write only to {@code dsp.*} on geo-target.
-     */
     public static WatermarkTableSpec fromAreaOfInterestMetadata(AreaOfInterestTableMetadata metadata) {
         return new WatermarkTableSpec(
                 metadata.syncKey(),
                 metadata.qualifiedSourceTable(),
                 metadata.primaryKeyColumn(),
                 metadata.geometryColumn(),
-                metadata.watermarkColumn(),
+                metadata.creationDateColumn(),
+                metadata.updatedAtColumn(),
                 metadata.whereClause(),
                 metadata.srid(),
                 metadata.layerName(),
@@ -76,7 +72,8 @@ public final class WatermarkTableSpecs {
                 metadata.qualifiedSourceTable(),
                 metadata.primaryKeyColumn(),
                 metadata.geometryColumn(),
-                metadata.watermarkColumn(),
+                metadata.creationDateColumn(),
+                metadata.updatedAtColumn(),
                 metadata.whereClause(),
                 metadata.srid(),
                 metadata.layerName(),

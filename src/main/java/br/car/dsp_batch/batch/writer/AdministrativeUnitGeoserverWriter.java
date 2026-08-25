@@ -3,7 +3,7 @@ package br.car.dsp_batch.batch.writer;
 import br.car.dsp_batch.batch.config.JobTableConfig;
 import br.car.dsp_batch.batch.dto.AdministrativeUnitDTO;
 import br.car.dsp_batch.service.AdministrativeUnitPersistenceService;
-import br.car.dsp_batch.temporal.WatermarkColumnSpec;
+import br.car.dsp_batch.temporal.TemporalColumnSpecs;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.item.Chunk;
 import org.springframework.batch.item.ItemWriter;
@@ -18,14 +18,14 @@ public class AdministrativeUnitGeoserverWriter implements ItemWriter<Administrat
 
     private final AdministrativeUnitPersistenceService persistenceService;
     private final JobTableConfig tableConfig;
-    private final WatermarkColumnSpec watermarkColumn;
+    private final TemporalColumnSpecs temporalColumns;
 
     public AdministrativeUnitGeoserverWriter(AdministrativeUnitPersistenceService persistenceService,
                                              JobTableConfig tableConfig,
-                                             WatermarkColumnSpec watermarkColumn) {
+                                             TemporalColumnSpecs temporalColumns) {
         this.persistenceService = persistenceService;
         this.tableConfig = tableConfig;
-        this.watermarkColumn = watermarkColumn;
+        this.temporalColumns = temporalColumns;
     }
 
     @Override
@@ -35,6 +35,6 @@ public class AdministrativeUnitGeoserverWriter implements ItemWriter<Administrat
                 chunk.size(),
                 tableConfig.getTargetTable());
         persistenceService.upsertAll(
-                new ArrayList<>(chunk.getItems()), tableConfig, watermarkColumn);
+                new ArrayList<>(chunk.getItems()), tableConfig, temporalColumns);
     }
 }

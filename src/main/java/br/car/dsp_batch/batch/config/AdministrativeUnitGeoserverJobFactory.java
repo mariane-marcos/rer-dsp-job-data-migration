@@ -14,7 +14,7 @@ import br.car.dsp_batch.sync.SyncWatermarkCommitListener;
 import br.car.dsp_batch.sync.WatermarkChangeDetectionEngine;
 import br.car.dsp_batch.temporal.BatchTemporalProperties;
 import br.car.dsp_batch.temporal.TemporalSchemaSupport;
-import br.car.dsp_batch.temporal.WatermarkColumnSpec;
+import br.car.dsp_batch.temporal.TemporalColumnSpecs;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.batch.core.Job;
@@ -180,7 +180,7 @@ public class AdministrativeUnitGeoserverJobFactory {
         Instant watermark = syncStateRepository
                 .findWatermark(tableConfig.getSyncKey())
                 .orElse(null);
-        WatermarkColumnSpec watermarkColumn = resolveWatermarkColumn(sourceDataSource, tableConfig);
+        TemporalColumnSpecs temporalColumns = resolveTemporalColumns(sourceDataSource, tableConfig);
         return new AdministrativeUnitGeoserverReader(
                 sourceDataSource,
                 minId,
@@ -188,7 +188,7 @@ public class AdministrativeUnitGeoserverJobFactory {
                 settings.getPageSize(),
                 tableConfig,
                 watermark,
-                watermarkColumn,
+                temporalColumns,
                 readerName
         );
     }
@@ -202,14 +202,15 @@ public class AdministrativeUnitGeoserverJobFactory {
         return new AdministrativeUnitGeoserverWriter(
                 persistenceService,
                 tableConfig,
-                resolveWatermarkColumn(sourceDataSource, tableConfig));
+                resolveTemporalColumns(sourceDataSource, tableConfig));
     }
 
-    private WatermarkColumnSpec resolveWatermarkColumn(DataSource sourceDataSource,
+    private TemporalColumnSpecs resolveTemporalColumns(DataSource sourceDataSource,
                                                        JobTableConfig tableConfig) {
-        return temporalSchemaSupport.resolveWatermarkColumn(
+        return temporalSchemaSupport.resolveTemporalColumns(
                 new JdbcTemplate(sourceDataSource),
                 tableConfig.getSourceTable(),
+                tableConfig.getCreationDateColumn(),
                 tableConfig.getUpdatedAtColumn(),
                 batchTemporalProperties.resolvePolicy(
                         tableConfig.getSourceTimezone(),

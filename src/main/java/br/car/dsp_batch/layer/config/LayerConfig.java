@@ -15,8 +15,10 @@ import java.util.Set;
  * Target table is always {@code dsp.<source-table-name>} on geo-target.
  *
  * <p>Mandatory source columns are mapped to fixed target names
- * ({@code id}, {@code area_of_interest_id}, {@code updated_at}, {@code label}, {@code geom}).
- * Optional extras in {@code persist-columns} keep the source column name on the target.
+ * ({@code id}, {@code area_of_interest_id}, {@code created_at}, {@code geom}).
+ * Optional mappings: {@code updated-at-column} → {@code updated_at},
+ * {@code label-column} → {@code label}.
+ * Optional extras in {@code additional-columns} keep the source column name on the target.
  */
 @Getter
 @Setter
@@ -29,6 +31,9 @@ public class LayerConfig {
 
     /** Canonical FK column on every migrated layer table in geo-target. */
     public static final String AREA_OF_INTEREST_ID_COLUMN = "area_of_interest_id";
+
+    /** Canonical creation timestamp on every migrated layer table in geo-target. */
+    public static final String CREATED_AT_COLUMN = "created_at";
 
     /**
      * Canonical geometry column on every migrated layer table in geo-target.
@@ -55,6 +60,7 @@ public class LayerConfig {
     public static final Set<String> CANONICAL_TARGET_COLUMNS = Set.of(
             ID_COLUMN,
             AREA_OF_INTEREST_ID_COLUMN,
+            CREATED_AT_COLUMN,
             UPDATED_AT_COLUMN,
             LABEL_COLUMN,
             GEOMETRY_COLUMN
@@ -64,11 +70,12 @@ public class LayerConfig {
     private String layerName;
     private String primaryKey;
     private String areaOfInterestIdColumn;
+    private String creationDateColumn;
     private String updatedAtColumn;
     private String labelColumn;
     private String geometryColumn;
     /** Extra source columns to migrate (same name on target). */
-    private List<String> persistColumns = new ArrayList<>();
+    private List<String> additionalColumns = new ArrayList<>();
     private String whereClause = "1=1";
     private Integer srid;
     /**
@@ -98,6 +105,14 @@ public class LayerConfig {
         return resolveSourceTable().table();
     }
 
+    public boolean hasUpdatedAtColumn() {
+        return updatedAtColumn != null && !updatedAtColumn.isBlank();
+    }
+
+    public boolean hasLabelColumn() {
+        return labelColumn != null && !labelColumn.isBlank();
+    }
+
     /**
      * Ordered set of source columns that must be migrated (required + extras).
      */
@@ -105,11 +120,16 @@ public class LayerConfig {
         Set<String> names = new LinkedHashSet<>();
         names.add(trimRequired(primaryKey));
         names.add(trimRequired(areaOfInterestIdColumn));
-        names.add(trimRequired(updatedAtColumn));
-        names.add(trimRequired(labelColumn));
+        names.add(trimRequired(creationDateColumn));
+        if (hasUpdatedAtColumn()) {
+            names.add(updatedAtColumn.trim());
+        }
+        if (hasLabelColumn()) {
+            names.add(labelColumn.trim());
+        }
         names.add(trimRequired(geometryColumn));
-        if (persistColumns != null) {
-            for (String column : persistColumns) {
+        if (additionalColumns != null) {
+            for (String column : additionalColumns) {
                 if (column != null && !column.isBlank()) {
                     names.add(column.trim());
                 }
@@ -130,49 +150,60 @@ public class LayerConfig {
         requireQualifiedTable(sourceTable);
         requireNonBlank("primary-key", primaryKey);
         requireNonBlank("area-of-interest-id-column", areaOfInterestIdColumn);
-        requireNonBlank("updated-at-column", updatedAtColumn);
-        requireNonBlank("label-column", labelColumn);
+        requireNonBlank("creation-date-column", creationDateColumn);
         requireNonBlank("geometry-column", geometryColumn);
-        validatePersistColumns();
+        validateAdditionalColumns();
     }
 
-    private void validatePersistColumns() {
-        if (persistColumns == null || persistColumns.isEmpty()) {
+    private void validateAdditionalColumns() {
+        if (additionalColumns == null || additionalColumns.isEmpty()) {
             return;
         }
 
-        Set<String> requiredSource = Set.of(
-                primaryKey.trim(),
-                areaOfInterestIdColumn.trim(),
-                updatedAtColumn.trim(),
-                labelColumn.trim(),
-                geometryColumn.trim()
-        );
+        Set<String> requiredSource = requiredSourceColumns();
 
         Set<String> seen = new LinkedHashSet<>();
-        for (String raw : persistColumns) {
+        for (String raw : additionalColumns) {
             if (raw == null || raw.isBlank()) {
                 throw new IllegalStateException(
-                        "persist-columns must not contain blank entries (source-table=" + sourceTable + ")");
+                        "additional-columns must not contain blank entries (source-table="
+                                + sourceTable + ")");
             }
             String column = raw.trim();
             if (!seen.add(column)) {
                 throw new IllegalStateException(
-                        "duplicate persist-columns entry '" + column + "' (source-table=" + sourceTable + ")");
+                        "duplicate additional-columns entry '" + column + "' (source-table="
+                                + sourceTable + ")");
             }
             if (requiredSource.contains(column)) {
                 throw new IllegalStateException(
-                        "persist-columns entry '" + column
-                                + "' duplicates a required column mapping (source-table=" + sourceTable + ")");
+                        "additional-columns entry '" + column
+                                + "' duplicates a required column mapping (source-table="
+                                + sourceTable + ")");
             }
             String lower = column.toLowerCase(java.util.Locale.ROOT);
             if (CANONICAL_TARGET_COLUMNS.contains(lower) || CANONICAL_TARGET_COLUMNS.contains(column)) {
                 throw new IllegalStateException(
-                        "persist-columns entry '" + column
+                        "additional-columns entry '" + column
                                 + "' collides with a canonical target column name "
                                 + CANONICAL_TARGET_COLUMNS + " (source-table=" + sourceTable + ")");
             }
         }
+    }
+
+    private Set<String> requiredSourceColumns() {
+        Set<String> required = new LinkedHashSet<>();
+        required.add(primaryKey.trim());
+        required.add(areaOfInterestIdColumn.trim());
+        required.add(creationDateColumn.trim());
+        required.add(geometryColumn.trim());
+        if (hasUpdatedAtColumn()) {
+            required.add(updatedAtColumn.trim());
+        }
+        if (hasLabelColumn()) {
+            required.add(labelColumn.trim());
+        }
+        return required;
     }
 
     private static void requireNonBlank(String field, String value) {

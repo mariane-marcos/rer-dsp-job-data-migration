@@ -11,9 +11,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class AreaOfInterestConfigTest {
 
     @Test
-    void validate_AcceptsOptionalPersistColumns() {
+    void validate_AcceptsOptionalAdditionalColumns() {
         AreaOfInterestConfig config = baseConfig();
-        config.setPersistColumns(List.of("management_plan"));
+        config.setAdditionalColumns(List.of("management_plan"));
 
         assertDoesNotThrow(config::validate);
     }
@@ -27,18 +27,18 @@ class AreaOfInterestConfigTest {
     }
 
     @Test
-    void validate_RejectsPersistColumnDuplicatingRequiredMapping() {
+    void validate_RejectsAdditionalColumnDuplicatingRequiredMapping() {
         AreaOfInterestConfig config = baseConfig();
-        config.setPersistColumns(List.of("commune_id"));
+        config.setAdditionalColumns(List.of("territory_level_3_fk"));
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, config::validate);
-        assertTrue(ex.getMessage().contains("commune_id"));
+        assertTrue(ex.getMessage().contains("territory_level_3_fk"));
     }
 
     @Test
-    void validate_RejectsDuplicateBetweenPersistAndBusinessOnlyLists() {
+    void validate_RejectsDuplicateBetweenAdditionalAndBusinessOnlyLists() {
         AreaOfInterestConfig config = baseConfig();
-        config.setPersistColumns(List.of("category"));
+        config.setAdditionalColumns(List.of("category"));
         config.setBusinessOnlyPersistColumns(List.of("category"));
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, config::validate);
@@ -70,7 +70,7 @@ class AreaOfInterestConfigTest {
         config.setPrimaryKey("id");
         config.setCreationDateColumn("creation_date");
         config.setUpdatedAtColumn("updated_at");
-        config.setCommuneIdColumn("commune_id");
+        config.setTerritoryLevel3Column("territory_level_3_fk");
         config.setTotalAreaColumn("total_area_ha");
         config.setGeometryColumn("geom");
         config.setSrid(4674);

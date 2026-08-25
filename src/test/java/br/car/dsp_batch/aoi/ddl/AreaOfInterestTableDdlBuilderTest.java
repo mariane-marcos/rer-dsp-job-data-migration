@@ -24,7 +24,7 @@ class AreaOfInterestTableDdlBuilderTest {
 
         assertTrue(ddl.contains("CREATE TABLE IF NOT EXISTS dsp.area_of_interest"));
         assertTrue(ddl.contains("\"id\" varchar(255)"));
-        assertTrue(ddl.contains("\"registration_date\" date"));
+        assertTrue(ddl.contains("\"created_at\" timestamptz"));
         assertTrue(ddl.contains("\"updated_at\" timestamptz"));
         assertTrue(ddl.contains("\"territory_level_3_id\" varchar(64)"));
         assertTrue(ddl.contains("\"area\""));
@@ -82,9 +82,9 @@ class AreaOfInterestTableDdlBuilderTest {
     private static AreaOfInterestTableMetadata sampleMetadata(List<String> businessOnlySourceColumns) {
         List<ColumnMetadata> columns = new java.util.ArrayList<>(List.of(
                 new ColumnMetadata("id", "int8", null, null, null, false, false),
-                new ColumnMetadata("creation_date", "date", null, null, null, false, false),
+                new ColumnMetadata("creation_date", "timestamptz", null, null, null, false, false),
                 new ColumnMetadata("updated_at", "timestamptz", null, null, null, false, false),
-                new ColumnMetadata("commune_id", "int8", null, null, null, false, false),
+                new ColumnMetadata("territory_level_3_fk", "int8", null, null, null, false, false),
                 new ColumnMetadata("total_area_ha", "numeric", null, null, null, false, false),
                 new ColumnMetadata("geom", "geometry", null, null, null, true, true)
         ));
@@ -97,11 +97,11 @@ class AreaOfInterestTableDdlBuilderTest {
                 new QualifiedTable("conservation", "conservation_units"),
                 new QualifiedTable("dsp", "area_of_interest"),
                 "id",
-                "creation_date",
-                "commune_id",
+                TemporalTestFixtures.timestamptz("creation_date"),
+                TemporalTestFixtures.timestamptz("updated_at"),
+                "territory_level_3_fk",
                 "total_area_ha",
                 "geom",
-                TemporalTestFixtures.timestamptz("updated_at"),
                 4674,
                 columns,
                 businessOnlySourceColumns,

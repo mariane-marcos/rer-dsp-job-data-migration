@@ -12,23 +12,23 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class JobTableConfigValidatorTest {
 
     @Test
-    void requireUpdatedAtColumn_RejectsMissingColumn() {
+    void requireCreationDateColumn_RejectsMissingColumn() {
         AdministrativeUnitTableProperties config = new AdministrativeUnitTableProperties();
         config.setSourceTable("source.unit");
         config.setSyncKey(SyncKeys.ADMIN_UNIT_LEVEL_1);
 
         IllegalArgumentException ex = assertThrows(
                 IllegalArgumentException.class,
-                () -> JobTableConfigValidator.requireUpdatedAtColumn(config)
+                () -> JobTableConfigValidator.requireCreationDateColumn(config)
         );
-        assertTrue(ex.getMessage().contains("updated-at-column"));
+        assertTrue(ex.getMessage().contains("creation-date-column"));
     }
 
     @Test
     void requireSyncKey_RejectsMissingKey() {
         AdministrativeUnitTableProperties config = new AdministrativeUnitTableProperties();
         config.setSourceTable("source.unit");
-        config.setUpdatedAtColumn("source_updated_at");
+        config.setCreationDateColumn("source_created_at");
 
         IllegalArgumentException ex = assertThrows(
                 IllegalArgumentException.class,
@@ -44,21 +44,21 @@ class JobTableConfigValidatorTest {
     }
 
     @Test
-    void adminUnitProperties_ValidateRequiresUpdatedAt() {
+    void adminUnitProperties_ValidateRequiresCreationDate() {
         AdministrativeUnitTableProperties config = new AdministrativeUnitTableProperties();
         config.setSourceTable("source.unit");
         config.setSyncKey(SyncKeys.ADMIN_UNIT_LEVEL_1);
 
         IllegalStateException ex = assertThrows(
                 IllegalStateException.class, config::validateWatermarkConfig);
-        assertTrue(ex.getMessage().contains("updated-at-column"));
+        assertTrue(ex.getMessage().contains("creation-date-column"));
     }
 
     @Test
     void adminUnitProperties_ValidateRequiresSyncKey() {
         AdministrativeUnitTableProperties config = new AdministrativeUnitTableProperties();
         config.setSourceTable("source.unit");
-        config.setUpdatedAtColumn("source_updated_at");
+        config.setCreationDateColumn("source_created_at");
 
         IllegalStateException ex = assertThrows(
                 IllegalStateException.class, config::validateWatermarkConfig);

@@ -95,26 +95,62 @@ public final class WatermarkTemporalBridge {
             return WatermarkPredicate.notNullOnly(notNull);
         }
         Instant truncated = truncate(watermark);
-        String utcLiteral = truncated.toString();
-        String sql = switch (spec.sourceType()) {
-            case TIMESTAMPTZ -> notNull + " AND " + column
-                    + " > TIMESTAMP WITH TIME ZONE '" + utcLiteral + "'";
+        String greaterThan = buildGreaterThanExpression(spec, truncated);
+        return WatermarkPredicate.withFilter(notNull + " AND " + greaterThan, truncated);
+    }
+
+    /**
+     * Change detection across mandatory creation date and optional update date.
+     */
+    public static WatermarkPredicate buildChangeDetectionPredicate(WatermarkColumnSpec creationDateColumn,
+                                                                   WatermarkColumnSpec updatedAtColumn,
+                                                                   Instant watermark) {
+        Objects.requireNonNull(creationDateColumn, "creationDateColumn");
+        String creationNotNull = creationDateColumn.sourceColumn() + " IS NOT NULL";
+        if (watermark == null) {
+            return WatermarkPredicate.notNullOnly(creationNotNull);
+        }
+        Instant truncated = truncate(watermark);
+        String creationDelta = buildGreaterThanExpression(creationDateColumn, truncated);
+        if (updatedAtColumn == null) {
+            String sql = creationNotNull + " AND (" + creationDelta + ")";
+            return WatermarkPredicate.withFilter(sql, truncated);
+        }
+        String updatedColumn = updatedAtColumn.sourceColumn();
+        String updatedDelta = buildGreaterThanExpression(updatedAtColumn, truncated);
+        String sql = creationNotNull + " AND ((" + creationDelta + ") OR ("
+                + updatedColumn + " IS NOT NULL AND " + updatedDelta + "))";
+        return WatermarkPredicate.withFilter(sql, truncated);
+    }
+
+    public static Instant maxEventInstant(Instant creationInstant, Instant updatedInstant) {
+        if (creationInstant == null) {
+            return updatedInstant;
+        }
+        if (updatedInstant == null) {
+            return creationInstant;
+        }
+        return creationInstant.isAfter(updatedInstant) ? creationInstant : updatedInstant;
+    }
+
+    private static String buildGreaterThanExpression(WatermarkColumnSpec spec, Instant watermark) {
+        String column = spec.sourceColumn();
+        String utcLiteral = watermark.toString();
+        return switch (spec.sourceType()) {
+            case TIMESTAMPTZ -> column + " > TIMESTAMP WITH TIME ZONE '" + utcLiteral + "'";
             case TIMESTAMP -> {
                 String zone = spec.policy().zoneIdSqlLiteral();
-                yield notNull + " AND " + column
-                        + " > (TIMESTAMP WITH TIME ZONE '" + utcLiteral
+                yield column + " > (TIMESTAMP WITH TIME ZONE '" + utcLiteral
                         + "' AT TIME ZONE '" + zone + "')";
             }
             case DATE -> {
                 String zone = spec.policy().zoneIdSqlLiteral();
-                yield notNull + " AND " + column
-                        + " > ((TIMESTAMP WITH TIME ZONE '" + utcLiteral
+                yield column + " > ((TIMESTAMP WITH TIME ZONE '" + utcLiteral
                         + "' AT TIME ZONE '" + zone + "')::date)";
             }
             default -> throw new IllegalStateException(
                     "Unsupported watermark type " + spec.sourceType());
         };
-        return WatermarkPredicate.withFilter(sql, truncated);
     }
 
     /**

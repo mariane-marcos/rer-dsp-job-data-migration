@@ -26,6 +26,7 @@ class LayerTableDdlBuilderTest {
         assertTrue(ddl.contains("\"id\" varchar(255)"));
         assertTrue(ddl.contains("\"label\" varchar(255)"));
         assertTrue(ddl.contains("\"area_of_interest_id\" varchar(255)"));
+        assertTrue(ddl.contains("\"created_at\" timestamptz"));
         assertTrue(ddl.contains("\"updated_at\" timestamptz"));
         assertTrue(ddl.contains("\"codigo\" varchar(40)"));
         assertTrue(ddl.contains("\"geom\" geometry(Geometry, 4674)"));
@@ -43,6 +44,7 @@ class LayerTableDdlBuilderTest {
                 new ColumnMetadata("id_parcela", "varchar", 80, null, null, false, false),
                 new ColumnMetadata("cod_imovel", "varchar", 80, null, null, false, false),
                 new ColumnMetadata("nome", "varchar", 255, null, null, true, false),
+                new ColumnMetadata("data_criacao", "timestamp", null, null, null, false, false),
                 new ColumnMetadata("data_atualizacao", "timestamp", null, null, null, false, false),
                 new ColumnMetadata("the_geom", "geometry", null, null, null, true, true)
         );
@@ -50,6 +52,7 @@ class LayerTableDdlBuilderTest {
                 "id_parcela",
                 "the_geom",
                 "cod_imovel",
+                "data_criacao",
                 "data_atualizacao",
                 "nome",
                 columns,
@@ -68,6 +71,7 @@ class LayerTableDdlBuilderTest {
                 new ColumnMetadata("id_parcela", "int8", null, null, null, false, false),
                 new ColumnMetadata("cod_imovel", "int8", null, null, null, false, false),
                 new ColumnMetadata("nome", "varchar", 255, null, null, true, false),
+                new ColumnMetadata("data_criacao", "timestamp", null, null, null, false, false),
                 new ColumnMetadata("data_atualizacao", "timestamp", null, null, null, false, false),
                 new ColumnMetadata("the_geom", "geometry", null, null, null, true, true)
         );
@@ -75,6 +79,7 @@ class LayerTableDdlBuilderTest {
                 "id_parcela",
                 "the_geom",
                 "cod_imovel",
+                "data_criacao",
                 "data_atualizacao",
                 "nome",
                 columns,
@@ -95,6 +100,7 @@ class LayerTableDdlBuilderTest {
                 new ColumnMetadata("id_parcela", "varchar", 80, null, null, false, false),
                 new ColumnMetadata("cod_imovel", "varchar", 80, null, null, false, false),
                 new ColumnMetadata("nome", "varchar", 255, null, null, true, false),
+                new ColumnMetadata("data_criacao", "timestamptz", null, null, null, false, false),
                 new ColumnMetadata("data_atualizacao", "timestamptz", null, null, null, false, false),
                 new ColumnMetadata("the_geom", "geometry", null, null, null, true, true)
         );
@@ -102,6 +108,7 @@ class LayerTableDdlBuilderTest {
                 "id_parcela",
                 "the_geom",
                 "cod_imovel",
+                "data_criacao",
                 "data_atualizacao",
                 "nome",
                 columns,
@@ -161,6 +168,7 @@ class LayerTableDdlBuilderTest {
                 sampleMetadata().primaryKeyColumn(),
                 sampleMetadata().geometryColumn(),
                 sampleMetadata().areaOfInterestIdSourceColumn(),
+                sampleMetadata().creationDateSourceColumn(),
                 sampleMetadata().updatedAtSourceColumn(),
                 sampleMetadata().labelSourceColumn(),
                 sampleMetadata().columns(),
@@ -178,6 +186,7 @@ class LayerTableDdlBuilderTest {
                 sampleMetadata().primaryKeyColumn(),
                 sampleMetadata().geometryColumn(),
                 sampleMetadata().areaOfInterestIdSourceColumn(),
+                sampleMetadata().creationDateSourceColumn(),
                 sampleMetadata().updatedAtSourceColumn(),
                 sampleMetadata().labelSourceColumn(),
                 sampleMetadata().columns(),
@@ -195,6 +204,7 @@ class LayerTableDdlBuilderTest {
                 sampleMetadata().primaryKeyColumn(),
                 sampleMetadata().geometryColumn(),
                 sampleMetadata().areaOfInterestIdSourceColumn(),
+                sampleMetadata().creationDateSourceColumn(),
                 sampleMetadata().updatedAtSourceColumn(),
                 sampleMetadata().labelSourceColumn(),
                 sampleMetadata().columns(),
@@ -214,6 +224,7 @@ class LayerTableDdlBuilderTest {
                 metadata.primaryKeyColumn(),
                 metadata.geometryColumn(),
                 metadata.areaOfInterestIdSourceColumn(),
+                metadata.creationDateSourceColumn(),
                 metadata.updatedAtSourceColumn(),
                 metadata.labelSourceColumn(),
                 metadata.columns(),
@@ -236,6 +247,7 @@ class LayerTableDdlBuilderTest {
                 sampleMetadata().primaryKeyColumn(),
                 sampleMetadata().geometryColumn(),
                 sampleMetadata().areaOfInterestIdSourceColumn(),
+                sampleMetadata().creationDateSourceColumn(),
                 sampleMetadata().updatedAtSourceColumn(),
                 sampleMetadata().labelSourceColumn(),
                 sampleMetadata().columns(),
@@ -252,6 +264,7 @@ class LayerTableDdlBuilderTest {
                 new ColumnMetadata("id_parcela", "varchar", 80, null, null, false, false),
                 new ColumnMetadata("cod_imovel", "varchar", 80, null, null, false, false),
                 new ColumnMetadata("nome", "varchar", 255, null, null, true, false),
+                new ColumnMetadata("data_criacao", "timestamptz", null, null, null, false, false),
                 new ColumnMetadata("data_atualizacao", "timestamptz", null, null, null, false, false),
                 new ColumnMetadata("codigo", "varchar", 40, null, null, true, false),
                 new ColumnMetadata("the_geom", "geometry", null, null, null, true, true)
@@ -260,6 +273,7 @@ class LayerTableDdlBuilderTest {
                 "id_parcela",
                 "the_geom",
                 "cod_imovel",
+                "data_criacao",
                 "data_atualizacao",
                 "nome",
                 columns,
@@ -270,6 +284,7 @@ class LayerTableDdlBuilderTest {
     private LayerTableMetadata metadata(String primaryKey,
                                         String geometryColumn,
                                         String aoiColumn,
+                                        String creationDateColumn,
                                         String updatedAtColumn,
                                         String labelColumn,
                                         List<ColumnMetadata> columns,
@@ -282,6 +297,7 @@ class LayerTableDdlBuilderTest {
                 primaryKey,
                 geometryColumn,
                 aoiColumn,
+                TemporalTestFixtures.timestamptz(creationDateColumn),
                 TemporalTestFixtures.timestamptz(updatedAtColumn),
                 labelColumn,
                 4674,

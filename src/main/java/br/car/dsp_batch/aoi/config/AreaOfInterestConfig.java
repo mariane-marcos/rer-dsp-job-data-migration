@@ -14,8 +14,8 @@ import java.util.Set;
  * Configuration for Area of Interest migration (source table → {@code dsp.area_of_interest}).
  *
  * <p>Mandatory source columns map to fixed target names on DSP
- * ({@code id}, {@code registration_date}, {@code updated_at}, {@code territory_level_3_id},
- * {@code area}, {@code geom}). Optional extras in {@code persist-columns} go to business +
+ * ({@code id}, {@code created_at}, {@code updated_at}, {@code territory_level_3_id},
+ * {@code area}, {@code geom}). Optional extras in {@code additional-columns} go to business +
  * geo-target. KPI columns in {@code business-only-persist-columns} are written only to dsp-db.
  */
 @Getter
@@ -23,7 +23,7 @@ import java.util.Set;
 public class AreaOfInterestConfig {
 
     public static final String ID_COLUMN = "id";
-    public static final String REGISTRATION_DATE_COLUMN = "registration_date";
+    public static final String CREATED_AT_COLUMN = "created_at";
     public static final String UPDATED_AT_COLUMN = "updated_at";
     public static final String TERRITORY_LEVEL_3_ID_COLUMN = "territory_level_3_id";
     public static final String AREA_COLUMN = "area";
@@ -33,7 +33,7 @@ public class AreaOfInterestConfig {
 
     public static final Set<String> CANONICAL_TARGET_COLUMNS = Set.of(
             ID_COLUMN,
-            REGISTRATION_DATE_COLUMN,
+            CREATED_AT_COLUMN,
             UPDATED_AT_COLUMN,
             TERRITORY_LEVEL_3_ID_COLUMN,
             AREA_COLUMN,
@@ -45,11 +45,11 @@ public class AreaOfInterestConfig {
     private String primaryKey;
     private String creationDateColumn;
     private String updatedAtColumn;
-    private String communeIdColumn;
+    private String territoryLevel3Column;
     private String totalAreaColumn;
     private String geometryColumn;
     /** Extra source columns migrated to business + geo-target (same name on target). */
-    private List<String> persistColumns = new ArrayList<>();
+    private List<String> additionalColumns = new ArrayList<>();
     /** KPI columns migrated only to dsp-db (same name on target), e.g. theme_1…theme_4. */
     private List<String> businessOnlyPersistColumns = new ArrayList<>();
     private String whereClause = "1=1";
@@ -87,8 +87,7 @@ public class AreaOfInterestConfig {
         requireQualifiedTable(targetTable);
         requireNonBlank("primary-key", primaryKey);
         requireNonBlank("creation-date-column", creationDateColumn);
-        requireNonBlank("updated-at-column", updatedAtColumn);
-        requireNonBlank("commune-id-column", communeIdColumn);
+        requireNonBlank("territory-level-3-column", territoryLevel3Column);
         requireNonBlank("total-area-column", totalAreaColumn);
         requireNonBlank("geometry-column", geometryColumn);
         if (srid == null || srid <= 0) {
@@ -96,14 +95,14 @@ public class AreaOfInterestConfig {
                     "batch.area-of-interest: 'srid' must be a positive integer");
         }
         validateOptionalColumnList(
-                persistColumns,
-                "persist-columns",
+                additionalColumns,
+                "additional-columns",
                 Set.of(),
                 true);
         validateOptionalColumnList(
                 businessOnlyPersistColumns,
                 "business-only-persist-columns",
-                normalizedOptionalColumns(persistColumns),
+                normalizedOptionalColumns(additionalColumns),
                 false);
     }
 
@@ -115,14 +114,7 @@ public class AreaOfInterestConfig {
             return;
         }
 
-        Set<String> requiredSource = Set.of(
-                primaryKey.trim(),
-                creationDateColumn.trim(),
-                updatedAtColumn.trim(),
-                communeIdColumn.trim(),
-                totalAreaColumn.trim(),
-                geometryColumn.trim()
-        );
+        Set<String> requiredSource = requiredSourceColumns();
 
         Set<String> forbidden = new LinkedHashSet<>(forbiddenDuplicates);
         if (validateAgainstBusinessOnly) {
@@ -158,6 +150,19 @@ public class AreaOfInterestConfig {
                                 + CANONICAL_TARGET_COLUMNS + " (source-table=" + sourceTable + ")");
             }
         }
+    }
+
+    private Set<String> requiredSourceColumns() {
+        Set<String> required = new LinkedHashSet<>();
+        required.add(primaryKey.trim());
+        required.add(creationDateColumn.trim());
+        required.add(territoryLevel3Column.trim());
+        required.add(totalAreaColumn.trim());
+        required.add(geometryColumn.trim());
+        if (updatedAtColumn != null && !updatedAtColumn.isBlank()) {
+            required.add(updatedAtColumn.trim());
+        }
+        return required;
     }
 
     private static Set<String> normalizedOptionalColumns(List<String> columns) {

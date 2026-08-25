@@ -25,9 +25,9 @@ import java.util.Map;
 import java.util.Set;
 
 import static br.car.dsp_batch.aoi.config.AreaOfInterestConfig.AREA_COLUMN;
+import static br.car.dsp_batch.aoi.config.AreaOfInterestConfig.CREATED_AT_COLUMN;
 import static br.car.dsp_batch.aoi.config.AreaOfInterestConfig.GEOMETRY_COLUMN;
 import static br.car.dsp_batch.aoi.config.AreaOfInterestConfig.ID_COLUMN;
-import static br.car.dsp_batch.aoi.config.AreaOfInterestConfig.REGISTRATION_DATE_COLUMN;
 import static br.car.dsp_batch.aoi.config.AreaOfInterestConfig.TERRITORY_LEVEL_3_ID_COLUMN;
 import static br.car.dsp_batch.aoi.config.AreaOfInterestConfig.UPDATED_AT_COLUMN;
 
@@ -70,63 +70,64 @@ public class AreaOfInterestIntrospectionService {
         }
 
         String primaryKey = requireConfiguredColumn(allColumns, config.getPrimaryKey(), "primary-key");
-        String creationDateColumn = requireConfiguredColumn(
+        String creationDateColumnName = requireConfiguredColumn(
                 allColumns, config.getCreationDateColumn(), "creation-date-column");
-        WatermarkColumnSpec watermarkColumn = requireUpdatedAtColumn(
-                allColumns, config.getUpdatedAtColumn(), config);
-        String updatedAtColumn = watermarkColumn.sourceColumn();
-        String communeIdColumn = requireConfiguredColumn(
-                allColumns, config.getCommuneIdColumn(), "commune-id-column");
+        WatermarkColumnSpec creationDateColumn = requireTemporalColumn(
+                allColumns, creationDateColumnName, config, "creation-date-column");
+        WatermarkColumnSpec updatedAtColumn = resolveOptionalTemporalColumn(
+                allColumns, config.getUpdatedAtColumn(), config, "updated-at-column");
+        String updatedAtColumnName = updatedAtColumn == null ? null : updatedAtColumn.sourceColumn();
+        String territoryLevel3Column = requireConfiguredColumn(
+                allColumns, config.getTerritoryLevel3Column(), "territory-level-3-column");
         String totalAreaColumn = requireConfiguredColumn(
                 allColumns, config.getTotalAreaColumn(), "total-area-column");
         GeometryInfo geometryInfo = resolveGeometry(sourceJdbc, source, allColumns, config.getGeometryColumn());
 
-        List<String> persistColumns = normalizeOptionalColumns(config.getPersistColumns());
+        List<String> additionalColumns = normalizeOptionalColumns(config.getAdditionalColumns());
         List<String> businessOnlyColumns = normalizeOptionalColumns(config.getBusinessOnlyPersistColumns());
-        validateOptionalColumnsExist(allColumns, persistColumns, "persist-columns");
+        validateOptionalColumnsExist(allColumns, additionalColumns, "additional-columns");
         validateOptionalColumnsExist(allColumns, businessOnlyColumns, "business-only-persist-columns");
         rejectCanonicalTargetNameCollisions(
                 source,
                 allColumns,
                 primaryKey,
-                creationDateColumn,
-                updatedAtColumn,
-                communeIdColumn,
+                creationDateColumnName,
+                updatedAtColumnName,
+                territoryLevel3Column,
                 totalAreaColumn,
                 geometryInfo.columnName(),
-                persistColumns,
+                additionalColumns,
                 businessOnlyColumns);
 
         int srid = resolveSrid(sourceJdbc, source, geometryInfo, config.getSrid());
-        requireExistingTargetUpdatedAtTimestamptz(targetJdbcTemplate, target);
-        requireExistingTargetUpdatedAtTimestamptz(geoTargetJdbcTemplate, target);
+        requireExistingTargetCreatedAtTimestamptz(targetJdbcTemplate, target);
+        requireExistingTargetCreatedAtTimestamptz(geoTargetJdbcTemplate, target);
 
         List<ColumnMetadata> migratedColumns = selectMigratedColumns(
                 allColumns,
                 primaryKey,
-                creationDateColumn,
-                updatedAtColumn,
-                communeIdColumn,
+                creationDateColumnName,
+                updatedAtColumnName,
+                territoryLevel3Column,
                 totalAreaColumn,
                 geometryInfo.columnName(),
-                persistColumns,
+                additionalColumns,
                 businessOnlyColumns);
         List<IndexMetadata> indexes = filterIndexes(
                 fetchIndexes(sourceJdbc, source), migratedColumns);
 
         log.info(
                 "AOI introspection completed for {}: pk={} -> {}, creationDate={} -> {}, "
-                        + "sourceUpdatedAt={} ({}) -> {}, communeId={} -> {}, totalArea={} -> {}, "
+                        + "sourceUpdatedAt={} -> {}, territoryLevel3={} -> {}, totalArea={} -> {}, "
                         + "sourceGeom={} -> {}, srid={}, migratedColumns={}",
                 source.qualified(),
                 primaryKey,
                 ID_COLUMN,
-                creationDateColumn,
-                REGISTRATION_DATE_COLUMN,
-                updatedAtColumn,
-                watermarkColumn.sourceType(),
-                UPDATED_AT_COLUMN,
-                communeIdColumn,
+                creationDateColumnName,
+                CREATED_AT_COLUMN,
+                updatedAtColumnName,
+                updatedAtColumnName == null ? "—" : UPDATED_AT_COLUMN,
+                territoryLevel3Column,
                 TERRITORY_LEVEL_3_ID_COLUMN,
                 totalAreaColumn,
                 AREA_COLUMN,
@@ -143,10 +144,10 @@ public class AreaOfInterestIntrospectionService {
                 target,
                 primaryKey,
                 creationDateColumn,
-                communeIdColumn,
+                updatedAtColumn,
+                territoryLevel3Column,
                 totalAreaColumn,
                 geometryInfo.columnName(),
-                watermarkColumn,
                 srid,
                 migratedColumns,
                 businessOnlyColumns,
@@ -187,10 +188,10 @@ public class AreaOfInterestIntrospectionService {
                                                        String primaryKey,
                                                        String creationDateColumn,
                                                        String updatedAtColumn,
-                                                       String communeIdColumn,
+                                                       String territoryLevel3Column,
                                                        String totalAreaColumn,
                                                        String geometryColumn,
-                                                       List<String> persistColumns,
+                                                       List<String> additionalColumns,
                                                        List<String> businessOnlyColumns) {
         Map<String, ColumnMetadata> byName = new LinkedHashMap<>();
         for (ColumnMetadata column : allColumns) {
@@ -200,10 +201,12 @@ public class AreaOfInterestIntrospectionService {
         List<String> orderedNames = new ArrayList<>();
         orderedNames.add(primaryKey);
         orderedNames.add(creationDateColumn);
-        orderedNames.add(updatedAtColumn);
-        orderedNames.add(communeIdColumn);
+        if (updatedAtColumn != null) {
+            orderedNames.add(updatedAtColumn);
+        }
+        orderedNames.add(territoryLevel3Column);
         orderedNames.add(totalAreaColumn);
-        orderedNames.addAll(persistColumns);
+        orderedNames.addAll(additionalColumns);
         orderedNames.addAll(businessOnlyColumns);
         orderedNames.add(geometryColumn);
 
@@ -244,7 +247,7 @@ public class AreaOfInterestIntrospectionService {
         }
     }
 
-    private void requireExistingTargetUpdatedAtTimestamptz(JdbcTemplate jdbc, QualifiedTable target) {
+    private void requireExistingTargetCreatedAtTimestamptz(JdbcTemplate jdbc, QualifiedTable target) {
         if (!schemaIntrospectionService.tableExists(jdbc, target)) {
             return;
         }
@@ -257,17 +260,17 @@ public class AreaOfInterestIntrospectionService {
                 (rs, rowNum) -> rs.getString("udt_name"),
                 target.schema(),
                 target.table(),
-                UPDATED_AT_COLUMN
+                CREATED_AT_COLUMN
         );
         if (udts.isEmpty()) {
             throw new IllegalStateException(
                     "Target table " + target.qualified()
-                            + " exists but has no '" + UPDATED_AT_COLUMN + "' column.");
+                            + " exists but has no '" + CREATED_AT_COLUMN + "' column.");
         }
         TemporalType type = TemporalTypeClassifier.classify(udts.getFirst());
         if (type != TemporalType.TIMESTAMPTZ) {
             throw new IllegalStateException(
-                    "Destination column '" + UPDATED_AT_COLUMN + "' on " + target.qualified()
+                    "Destination column '" + CREATED_AT_COLUMN + "' on " + target.qualified()
                             + " must be timestamptz (found '" + udts.getFirst()
                             + "'). Refusing to ALTER automatically.");
         }
@@ -278,26 +281,29 @@ public class AreaOfInterestIntrospectionService {
                                                      String primaryKey,
                                                      String creationDateColumn,
                                                      String updatedAtColumn,
-                                                     String communeIdColumn,
+                                                     String territoryLevel3Column,
                                                      String totalAreaColumn,
                                                      String geometryColumn,
-                                                     List<String> persistColumns,
+                                                     List<String> additionalColumns,
                                                      List<String> businessOnlyColumns) {
         rejectReservedNameCollision(table, allColumns, ID_COLUMN, primaryKey, "primary-key");
         rejectReservedNameCollision(
-                table, allColumns, REGISTRATION_DATE_COLUMN, creationDateColumn, "creation-date-column");
+                table, allColumns, CREATED_AT_COLUMN, creationDateColumn, "creation-date-column");
+        if (updatedAtColumn != null) {
+            rejectReservedNameCollision(
+                    table, allColumns, UPDATED_AT_COLUMN, updatedAtColumn, "updated-at-column");
+        }
         rejectReservedNameCollision(
-                table, allColumns, UPDATED_AT_COLUMN, updatedAtColumn, "updated-at-column");
-        rejectReservedNameCollision(
-                table, allColumns, TERRITORY_LEVEL_3_ID_COLUMN, communeIdColumn, "commune-id-column");
+                table, allColumns, TERRITORY_LEVEL_3_ID_COLUMN, territoryLevel3Column,
+                "territory-level-3-column");
         rejectReservedNameCollision(
                 table, allColumns, AREA_COLUMN, totalAreaColumn, "total-area-column");
         rejectGeomNameCollision(table, allColumns, geometryColumn);
 
-        for (String persistColumn : persistColumns) {
-            if (AreaOfInterestConfig.CANONICAL_TARGET_COLUMNS.contains(persistColumn)) {
+        for (String additionalColumn : additionalColumns) {
+            if (AreaOfInterestConfig.CANONICAL_TARGET_COLUMNS.contains(additionalColumn)) {
                 throw new IllegalStateException(
-                        "persist-columns entry '" + persistColumn
+                        "additional-columns entry '" + additionalColumn
                                 + "' collides with a canonical target column on "
                                 + table.qualified() + ".");
             }
@@ -314,11 +320,13 @@ public class AreaOfInterestIntrospectionService {
         Set<String> migrated = new LinkedHashSet<>();
         migrated.add(primaryKey);
         migrated.add(creationDateColumn);
-        migrated.add(updatedAtColumn);
-        migrated.add(communeIdColumn);
+        if (updatedAtColumn != null) {
+            migrated.add(updatedAtColumn);
+        }
+        migrated.add(territoryLevel3Column);
         migrated.add(totalAreaColumn);
         migrated.add(geometryColumn);
-        migrated.addAll(persistColumns);
+        migrated.addAll(additionalColumns);
         migrated.addAll(businessOnlyColumns);
 
         Set<String> mappedTargets = AreaOfInterestConfig.CANONICAL_TARGET_COLUMNS;
@@ -326,7 +334,7 @@ public class AreaOfInterestIntrospectionService {
             boolean isCanonicalSource = sourceName.equals(primaryKey)
                     || sourceName.equals(creationDateColumn)
                     || sourceName.equals(updatedAtColumn)
-                    || sourceName.equals(communeIdColumn)
+                    || sourceName.equals(territoryLevel3Column)
                     || sourceName.equals(totalAreaColumn)
                     || sourceName.equals(geometryColumn);
             if (isCanonicalSource) {
@@ -422,18 +430,18 @@ public class AreaOfInterestIntrospectionService {
         }
     }
 
-    private WatermarkColumnSpec requireUpdatedAtColumn(List<ColumnMetadata> columns,
-                                                       String configured,
-                                                       AreaOfInterestConfig config) {
-        String name = requireConfiguredColumn(columns, configured, "updated-at-column");
+    private WatermarkColumnSpec requireTemporalColumn(List<ColumnMetadata> columns,
+                                                      String columnName,
+                                                      AreaOfInterestConfig config,
+                                                      String field) {
         ColumnMetadata column = columns.stream()
-                .filter(col -> col.name().equals(name))
+                .filter(col -> col.name().equals(columnName))
                 .findFirst()
                 .orElseThrow();
         TemporalType type = TemporalTypeClassifier.classify(column.udtName());
         if (!type.isWatermarkSupported()) {
             throw new IllegalStateException(
-                    "updated-at-column '" + name + "' has type '" + column.udtName()
+                    field + " '" + columnName + "' has type '" + column.udtName()
                             + "'. Expected timestamp, timestamptz or date.");
         }
         SourceTemporalPolicy policy = batchTemporalProperties.resolvePolicy(
@@ -442,12 +450,24 @@ public class AreaOfInterestIntrospectionService {
         );
         if (type == TemporalType.DATE) {
             log.warn(
-                    "updated-at-column '{}' on {} is DATE — watermark granularity is daily",
-                    name,
+                    "{} '{}' on {} is DATE — watermark granularity is daily",
+                    field,
+                    columnName,
                     config.getSourceTable()
             );
         }
-        return WatermarkColumnSpec.of(name, type, policy);
+        return WatermarkColumnSpec.of(columnName, type, policy);
+    }
+
+    private WatermarkColumnSpec resolveOptionalTemporalColumn(List<ColumnMetadata> columns,
+                                                              String configured,
+                                                              AreaOfInterestConfig config,
+                                                              String field) {
+        if (configured == null || configured.isBlank()) {
+            return null;
+        }
+        String name = requireConfiguredColumn(columns, configured, field);
+        return requireTemporalColumn(columns, name, config, field);
     }
 
     private int resolveSrid(JdbcTemplate jdbc,

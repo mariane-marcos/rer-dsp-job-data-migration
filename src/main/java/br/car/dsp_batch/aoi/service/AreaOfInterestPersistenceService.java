@@ -189,8 +189,15 @@ public class AreaOfInterestPersistenceService {
                               Map<String, String> udtBySource) throws java.sql.SQLException {
         String sourceColumn = metadata.resolveSourceColumnName(targetColumn);
         Object value = item.getAttribute(sourceColumn);
+        if (AreaOfInterestConfig.CREATED_AT_COLUMN.equals(targetColumn)) {
+            var instant = WatermarkTemporalBridge.toInstant(value, metadata.creationDateColumn());
+            ps.setObject(index++, WatermarkTemporalBridge.toDspTimestamptz(instant));
+            return index;
+        }
         if (AreaOfInterestConfig.UPDATED_AT_COLUMN.equals(targetColumn)) {
-            var instant = WatermarkTemporalBridge.toInstant(value, metadata.watermarkColumn());
+            var instant = metadata.hasUpdatedAtColumn()
+                    ? WatermarkTemporalBridge.toInstant(value, metadata.updatedAtColumn())
+                    : null;
             ps.setObject(index++, WatermarkTemporalBridge.toDspTimestamptz(instant));
             return index;
         }

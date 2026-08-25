@@ -29,6 +29,7 @@ public class AdministrativeUnitTableProperties implements JobTableConfig, Initia
     private String layerName;
     private Map<String, String> columnMapping = new HashMap<>();
     private int srid;
+    private String creationDateColumn;
     private String updatedAtColumn;
     /** Optional IANA timezone override; falls back to {@code batch.source-timezone}. */
     private String sourceTimezone;
@@ -40,9 +41,9 @@ public class AdministrativeUnitTableProperties implements JobTableConfig, Initia
     }
 
     public void validateWatermarkConfig() {
-        if (updatedAtColumn == null || updatedAtColumn.isBlank()) {
+        if (creationDateColumn == null || creationDateColumn.isBlank()) {
             throw new IllegalStateException(
-                    "updated-at-column is required (table=" + sourceTable + ")");
+                    "creation-date-column is required (table=" + sourceTable + ")");
         }
         if (syncKey == null || syncKey.isBlank()) {
             String resolved = getSyncKey();

@@ -9,15 +9,15 @@ public final class JobTableConfigValidator {
     }
 
     public static void requireWatermarkFields(JobTableConfig tableConfig) {
-        requireUpdatedAtColumn(tableConfig);
+        requireCreationDateColumn(tableConfig);
         requireSyncKey(tableConfig);
     }
 
-    public static void requireUpdatedAtColumn(JobTableConfig tableConfig) {
-        String column = tableConfig.getUpdatedAtColumn();
+    public static void requireCreationDateColumn(JobTableConfig tableConfig) {
+        String column = tableConfig.getCreationDateColumn();
         if (column == null || column.isBlank()) {
             throw new IllegalArgumentException(
-                    "updated-at-column is required for table " + tableConfig.getSourceTable());
+                    "creation-date-column is required for table " + tableConfig.getSourceTable());
         }
     }
 

@@ -37,7 +37,8 @@ public class DeferredLayerPartitioner implements Partitioner {
         var watermark = syncStateRepository.findWatermark(layerKey).orElse(null);
         String whereClause = WatermarkPartitionSupport.resolveWhereClause(
                 metadata.whereClause(),
-                metadata.watermarkColumn(),
+                metadata.creationDateColumn(),
+                metadata.updatedAtColumn(),
                 watermark
         );
         Partitioner delegate = WatermarkPartitionSupport.columnRangePartitioner(

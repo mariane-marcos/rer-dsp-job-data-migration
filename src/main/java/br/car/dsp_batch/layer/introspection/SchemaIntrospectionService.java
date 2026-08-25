@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.Set;
 
 import static br.car.dsp_batch.layer.config.LayerConfig.AREA_OF_INTEREST_ID_COLUMN;
+import static br.car.dsp_batch.layer.config.LayerConfig.CREATED_AT_COLUMN;
 import static br.car.dsp_batch.layer.config.LayerConfig.GEOMETRY_COLUMN;
 import static br.car.dsp_batch.layer.config.LayerConfig.ID_COLUMN;
 import static br.car.dsp_batch.layer.config.LayerConfig.LABEL_COLUMN;
@@ -82,32 +83,38 @@ public class SchemaIntrospectionService {
                 allColumns, config.getPrimaryKey(), "primary-key");
         String areaOfInterestIdColumn = requireConfiguredColumn(
                 allColumns, config.getAreaOfInterestIdColumn(), "area-of-interest-id-column");
-        WatermarkColumnSpec watermarkColumn = requireUpdatedAtColumn(
-                allColumns, config.getUpdatedAtColumn(), config);
-        String updatedAtColumn = watermarkColumn.sourceColumn();
-        String labelColumn = requireConfiguredColumn(
+        String creationDateColumnName = requireConfiguredColumn(
+                allColumns, config.getCreationDateColumn(), "creation-date-column");
+        WatermarkColumnSpec creationDateColumn = requireTemporalColumn(
+                allColumns, creationDateColumnName, config, "creation-date-column");
+        WatermarkColumnSpec updatedAtColumn = resolveOptionalTemporalColumn(
+                allColumns, config.getUpdatedAtColumn(), config, "updated-at-column");
+        String updatedAtColumnName = updatedAtColumn == null ? null : updatedAtColumn.sourceColumn();
+        String labelColumn = resolveOptionalConfiguredColumn(
                 allColumns, config.getLabelColumn(), "label-column");
         GeometryInfo geometryInfo = resolveGeometry(
                 sourceJdbc, source, allColumns, config.getGeometryColumn());
 
-        List<String> persistColumns = normalizePersistColumns(config.getPersistColumns());
-        validatePersistColumnsExist(allColumns, persistColumns);
-        validatePersistColumnsTemporalTypes(allColumns, persistColumns);
+        List<String> additionalColumns = normalizeAdditionalColumns(config.getAdditionalColumns());
+        validateAdditionalColumnsExist(allColumns, additionalColumns);
+        validateAdditionalColumnsTemporalTypes(allColumns, additionalColumns);
         rejectCanonicalTargetNameCollisions(source, allColumns, primaryKey, areaOfInterestIdColumn,
-                updatedAtColumn, labelColumn, geometryInfo.columnName(), persistColumns);
+                creationDateColumnName, updatedAtColumnName, labelColumn, geometryInfo.columnName(),
+                additionalColumns);
 
         warnIfHigherDimensional(source, geometryInfo);
         int srid = resolveSrid(sourceJdbc, source, geometryInfo, config.getSrid());
-        requireExistingTargetUpdatedAtTimestamptz(target);
+        requireExistingTargetCreatedAtTimestamptz(target);
 
         List<ColumnMetadata> migratedColumns = selectMigratedColumns(
                 allColumns,
                 primaryKey,
                 areaOfInterestIdColumn,
-                updatedAtColumn,
+                creationDateColumnName,
+                updatedAtColumnName,
                 labelColumn,
                 geometryInfo.columnName(),
-                persistColumns
+                additionalColumns
         );
         List<IndexMetadata> indexes = filterIndexes(
                 fetchIndexes(sourceJdbc, source),
@@ -116,18 +123,20 @@ public class SchemaIntrospectionService {
 
         log.info(
                 "Introspection completed for {}: pk={} -> {}, aoiLink={} -> {}, "
-                        + "sourceUpdatedAt={} ({}) -> {}, label={} -> {}, sourceGeom={} -> {}, "
-                        + "srid={}, migratedColumns={}",
+                        + "sourceCreatedAt={} ({}) -> {}, sourceUpdatedAt={} -> {}, label={} -> {}, "
+                        + "sourceGeom={} -> {}, srid={}, migratedColumns={}",
                 source.qualified(),
                 primaryKey,
                 ID_COLUMN,
                 areaOfInterestIdColumn,
                 AREA_OF_INTEREST_ID_COLUMN,
-                updatedAtColumn,
-                watermarkColumn.sourceType(),
-                UPDATED_AT_COLUMN,
+                creationDateColumnName,
+                creationDateColumn.sourceType(),
+                CREATED_AT_COLUMN,
+                updatedAtColumnName,
+                updatedAtColumnName == null ? "—" : UPDATED_AT_COLUMN,
                 labelColumn,
-                LABEL_COLUMN,
+                labelColumn == null ? "—" : LABEL_COLUMN,
                 geometryInfo.columnName(),
                 GEOMETRY_COLUMN,
                 srid,
@@ -142,7 +151,8 @@ public class SchemaIntrospectionService {
                 primaryKey,
                 geometryInfo.columnName(),
                 areaOfInterestIdColumn,
-                watermarkColumn,
+                creationDateColumn,
+                updatedAtColumn,
                 labelColumn,
                 srid,
                 migratedColumns,
@@ -191,10 +201,11 @@ public class SchemaIntrospectionService {
     private List<ColumnMetadata> selectMigratedColumns(List<ColumnMetadata> allColumns,
                                                        String primaryKey,
                                                        String areaOfInterestIdColumn,
+                                                       String creationDateColumn,
                                                        String updatedAtColumn,
                                                        String labelColumn,
                                                        String geometryColumn,
-                                                       List<String> persistColumns) {
+                                                       List<String> additionalColumns) {
         Map<String, ColumnMetadata> byName = new LinkedHashMap<>();
         for (ColumnMetadata column : allColumns) {
             byName.put(column.name(), column);
@@ -203,9 +214,14 @@ public class SchemaIntrospectionService {
         List<String> orderedNames = new ArrayList<>();
         orderedNames.add(primaryKey);
         orderedNames.add(areaOfInterestIdColumn);
-        orderedNames.add(labelColumn);
-        orderedNames.add(updatedAtColumn);
-        orderedNames.addAll(persistColumns);
+        orderedNames.add(creationDateColumn);
+        if (updatedAtColumn != null) {
+            orderedNames.add(updatedAtColumn);
+        }
+        if (labelColumn != null) {
+            orderedNames.add(labelColumn);
+        }
+        orderedNames.addAll(additionalColumns);
         orderedNames.add(geometryColumn);
 
         Set<String> seen = new LinkedHashSet<>();
@@ -224,12 +240,12 @@ public class SchemaIntrospectionService {
         return selected;
     }
 
-    private List<String> normalizePersistColumns(List<String> persistColumns) {
-        if (persistColumns == null || persistColumns.isEmpty()) {
+    private List<String> normalizeAdditionalColumns(List<String> additionalColumns) {
+        if (additionalColumns == null || additionalColumns.isEmpty()) {
             return List.of();
         }
         List<String> normalized = new ArrayList<>();
-        for (String column : persistColumns) {
+        for (String column : additionalColumns) {
             if (column != null && !column.isBlank()) {
                 normalized.add(column.trim());
             }
@@ -237,19 +253,20 @@ public class SchemaIntrospectionService {
         return normalized;
     }
 
-    private void validatePersistColumnsExist(List<ColumnMetadata> columns, List<String> persistColumns) {
-        for (String column : persistColumns) {
-            requireColumn(columns, column, "persist-columns");
+    private void validateAdditionalColumnsExist(List<ColumnMetadata> columns,
+                                                List<String> additionalColumns) {
+        for (String column : additionalColumns) {
+            requireColumn(columns, column, "additional-columns");
         }
     }
 
-    private void validatePersistColumnsTemporalTypes(List<ColumnMetadata> columns,
-                                                     List<String> persistColumns) {
+    private void validateAdditionalColumnsTemporalTypes(List<ColumnMetadata> columns,
+                                                        List<String> additionalColumns) {
         Map<String, ColumnMetadata> byName = new LinkedHashMap<>();
         for (ColumnMetadata column : columns) {
             byName.put(column.name(), column);
         }
-        for (String name : persistColumns) {
+        for (String name : additionalColumns) {
             ColumnMetadata column = byName.get(name);
             if (column == null) {
                 continue;
@@ -257,7 +274,7 @@ public class SchemaIntrospectionService {
             TemporalType type = TemporalTypeClassifier.classify(column.udtName());
             if (type == TemporalType.UNSUPPORTED && isExplicitlyTemporalUdt(column.udtName())) {
                 throw new IllegalStateException(
-                        "persist-columns entry '" + name + "' has unsupported temporal type '"
+                        "additional-columns entry '" + name + "' has unsupported temporal type '"
                                 + column.udtName() + "'.");
             }
             CommonTemporalHandler.requireCommonSupported(name, column.udtName());
@@ -272,10 +289,14 @@ public class SchemaIntrospectionService {
         return lower.contains("time") || lower.contains("date") || lower.contains("interval");
     }
 
-    private void requireExistingTargetUpdatedAtTimestamptz(QualifiedTable target) {
+    private void requireExistingTargetCreatedAtTimestamptz(QualifiedTable target) {
         if (!tableExists(geoTargetJdbcTemplate, target)) {
             return;
         }
+        requireExistingTargetTimestamptzColumn(target, CREATED_AT_COLUMN);
+    }
+
+    private void requireExistingTargetTimestamptzColumn(QualifiedTable target, String columnName) {
         List<String> udts = geoTargetJdbcTemplate.query(
                 """
                 SELECT udt_name
@@ -285,17 +306,17 @@ public class SchemaIntrospectionService {
                 (rs, rowNum) -> rs.getString("udt_name"),
                 target.schema(),
                 target.table(),
-                UPDATED_AT_COLUMN
+                columnName
         );
         if (udts.isEmpty()) {
             throw new IllegalStateException(
                     "Target table " + target.qualified()
-                            + " exists but has no '" + UPDATED_AT_COLUMN + "' column.");
+                            + " exists but has no '" + columnName + "' column.");
         }
         TemporalType type = TemporalTypeClassifier.classify(udts.getFirst());
         if (type != TemporalType.TIMESTAMPTZ) {
             throw new IllegalStateException(
-                    "Destination column '" + UPDATED_AT_COLUMN + "' on " + target.qualified()
+                    "Destination column '" + columnName + "' on " + target.qualified()
                             + " must be timestamptz (found '" + udts.getFirst()
                             + "'). Refusing to ALTER automatically.");
         }
@@ -309,40 +330,53 @@ public class SchemaIntrospectionService {
                                                      List<ColumnMetadata> allColumns,
                                                      String primaryKey,
                                                      String areaOfInterestIdColumn,
+                                                     String creationDateColumn,
                                                      String updatedAtColumn,
                                                      String labelColumn,
                                                      String geometryColumn,
-                                                     List<String> persistColumns) {
+                                                     List<String> additionalColumns) {
         rejectReservedNameCollision(table, allColumns, ID_COLUMN, primaryKey, "primary-key");
         rejectReservedNameCollision(
                 table, allColumns, AREA_OF_INTEREST_ID_COLUMN, areaOfInterestIdColumn,
                 "area-of-interest-id-column");
         rejectReservedNameCollision(
-                table, allColumns, UPDATED_AT_COLUMN, updatedAtColumn, "updated-at-column");
-        rejectReservedNameCollision(table, allColumns, LABEL_COLUMN, labelColumn, "label-column");
+                table, allColumns, CREATED_AT_COLUMN, creationDateColumn, "creation-date-column");
+        if (updatedAtColumn != null) {
+            rejectReservedNameCollision(
+                    table, allColumns, UPDATED_AT_COLUMN, updatedAtColumn, "updated-at-column");
+        }
+        if (labelColumn != null) {
+            rejectReservedNameCollision(
+                    table, allColumns, LABEL_COLUMN, labelColumn, "label-column");
+        }
         rejectGeomNameCollision(table, allColumns, geometryColumn);
 
         Set<String> migrated = new LinkedHashSet<>();
         migrated.add(primaryKey);
         migrated.add(areaOfInterestIdColumn);
-        migrated.add(updatedAtColumn);
-        migrated.add(labelColumn);
+        migrated.add(creationDateColumn);
+        if (updatedAtColumn != null) {
+            migrated.add(updatedAtColumn);
+        }
+        if (labelColumn != null) {
+            migrated.add(labelColumn);
+        }
         migrated.add(geometryColumn);
-        migrated.addAll(persistColumns);
+        migrated.addAll(additionalColumns);
 
-        for (String persistColumn : persistColumns) {
-            if (LayerConfig.CANONICAL_TARGET_COLUMNS.contains(persistColumn)) {
+        for (String additionalColumn : additionalColumns) {
+            if (LayerConfig.CANONICAL_TARGET_COLUMNS.contains(additionalColumn)) {
                 throw new IllegalStateException(
-                        "persist-columns entry '" + persistColumn
+                        "additional-columns entry '" + additionalColumn
                                 + "' collides with a canonical target column on "
                                 + table.qualified() + ".");
             }
         }
 
-        // Extra source columns that keep their name must not collide with mapped targets.
         Set<String> mappedTargets = Set.of(
                 ID_COLUMN,
                 AREA_OF_INTEREST_ID_COLUMN,
+                CREATED_AT_COLUMN,
                 UPDATED_AT_COLUMN,
                 LABEL_COLUMN,
                 GEOMETRY_COLUMN
@@ -350,6 +384,7 @@ public class SchemaIntrospectionService {
         for (String sourceName : migrated) {
             boolean isCanonicalSource = sourceName.equals(primaryKey)
                     || sourceName.equals(areaOfInterestIdColumn)
+                    || sourceName.equals(creationDateColumn)
                     || sourceName.equals(updatedAtColumn)
                     || sourceName.equals(labelColumn)
                     || sourceName.equals(geometryColumn);
@@ -456,10 +491,29 @@ public class SchemaIntrospectionService {
         }
     }
 
-    private WatermarkColumnSpec requireUpdatedAtColumn(List<ColumnMetadata> columns,
-                                                       String configured,
-                                                       LayerConfig config) {
-        String name = requireConfiguredColumn(columns, configured, "updated-at-column");
+    private WatermarkColumnSpec requireTemporalColumn(List<ColumnMetadata> columns,
+                                                      String columnName,
+                                                      LayerConfig config,
+                                                      String field) {
+        return resolveTemporalColumn(columns, columnName, config, field, true);
+    }
+
+    private WatermarkColumnSpec resolveOptionalTemporalColumn(List<ColumnMetadata> columns,
+                                                              String configured,
+                                                              LayerConfig config,
+                                                              String field) {
+        if (configured == null || configured.isBlank()) {
+            return null;
+        }
+        String name = requireConfiguredColumn(columns, configured, field);
+        return resolveTemporalColumn(columns, name, config, field, false);
+    }
+
+    private WatermarkColumnSpec resolveTemporalColumn(List<ColumnMetadata> columns,
+                                                      String name,
+                                                      LayerConfig config,
+                                                      String field,
+                                                      boolean required) {
         ColumnMetadata column = columns.stream()
                 .filter(col -> col.name().equals(name))
                 .findFirst()
@@ -467,10 +521,9 @@ public class SchemaIntrospectionService {
         TemporalType type = TemporalTypeClassifier.classify(column.udtName());
         if (!type.isWatermarkSupported()) {
             throw new IllegalStateException(
-                    "updated-at-column '" + name + "' has type '" + column.udtName()
+                    field + " '" + name + "' has type '" + column.udtName()
                             + "'. Expected timestamp, timestamptz or date "
-                            + "(it will be stored as '" + UPDATED_AT_COLUMN
-                            + "' TIMESTAMPTZ on geo-target).");
+                            + "(it will be stored as TIMESTAMPTZ on geo-target).");
         }
         SourceTemporalPolicy policy = batchTemporalProperties.resolvePolicy(
                 config.getSourceTimezone(),
@@ -478,12 +531,22 @@ public class SchemaIntrospectionService {
         );
         if (type == TemporalType.DATE) {
             log.warn(
-                    "updated-at-column '{}' on {} is DATE — watermark granularity is daily",
+                    "{} '{}' on {} is DATE — watermark granularity is daily",
+                    field,
                     name,
                     config.getSourceTable()
             );
         }
         return WatermarkColumnSpec.of(name, type, policy);
+    }
+
+    private String resolveOptionalConfiguredColumn(List<ColumnMetadata> columns,
+                                                   String configured,
+                                                   String field) {
+        if (configured == null || configured.isBlank()) {
+            return null;
+        }
+        return requireConfiguredColumn(columns, configured, field);
     }
 
     private void warnIfHigherDimensional(QualifiedTable table, GeometryInfo geometryInfo) {

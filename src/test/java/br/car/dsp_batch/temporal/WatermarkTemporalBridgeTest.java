@@ -118,6 +118,36 @@ class WatermarkTemporalBridgeTest {
     }
 
     @Test
+    void buildChangeDetectionPredicate_UsesCreationOnlyWhenUpdatedMissing() {
+        Instant wm = Instant.parse("2026-08-10T15:00:00Z");
+        WatermarkColumnSpec creation = WatermarkColumnSpec.of(
+                "data_criacao", TemporalType.TIMESTAMPTZ, SourceTemporalPolicy.none());
+        WatermarkPredicate firstLoad = WatermarkTemporalBridge.buildChangeDetectionPredicate(
+                creation, null, null);
+        assertEquals("data_criacao IS NOT NULL", firstLoad.sqlFragment());
+
+        WatermarkPredicate incremental = WatermarkTemporalBridge.buildChangeDetectionPredicate(
+                creation, null, wm);
+        assertTrue(incremental.sqlFragment().contains("data_criacao IS NOT NULL"));
+        assertTrue(incremental.sqlFragment().contains("data_criacao > TIMESTAMP WITH TIME ZONE"));
+        assertTrue(!incremental.sqlFragment().contains(" OR "));
+    }
+
+    @Test
+    void buildChangeDetectionPredicate_ConsidersBothDatesWhenUpdatedPresent() {
+        Instant wm = Instant.parse("2026-08-10T15:00:00Z");
+        WatermarkColumnSpec creation = WatermarkColumnSpec.of(
+                "data_criacao", TemporalType.TIMESTAMPTZ, SourceTemporalPolicy.none());
+        WatermarkColumnSpec updated = WatermarkColumnSpec.of(
+                "data_atualizacao", TemporalType.TIMESTAMPTZ, SourceTemporalPolicy.none());
+        WatermarkPredicate predicate = WatermarkTemporalBridge.buildChangeDetectionPredicate(
+                creation, updated, wm);
+        assertTrue(predicate.sqlFragment().contains("data_criacao IS NOT NULL"));
+        assertTrue(predicate.sqlFragment().contains("data_atualizacao IS NOT NULL"));
+        assertTrue(predicate.sqlFragment().contains(" OR "));
+    }
+
+    @Test
     void truncate_ToMicroseconds() {
         Instant nano = Instant.parse("2026-01-01T00:00:00.123456789Z");
         assertEquals(Instant.parse("2026-01-01T00:00:00.123456Z"),

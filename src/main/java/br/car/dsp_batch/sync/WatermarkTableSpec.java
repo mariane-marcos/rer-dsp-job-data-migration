@@ -3,7 +3,7 @@ package br.car.dsp_batch.sync;
 import br.car.dsp_batch.temporal.WatermarkColumnSpec;
 
 /**
- * Neutral table descriptor for incremental watermark change detection.
+ * Neutral table descriptor for incremental change detection.
  * Used by admin units/AOI and by layers.
  */
 public record WatermarkTableSpec(
@@ -11,7 +11,8 @@ public record WatermarkTableSpec(
         String sourceTable,
         String sourcePrimaryKey,
         String sourceGeometryColumn,
-        WatermarkColumnSpec watermarkColumn,
+        WatermarkColumnSpec creationDateColumn,
+        WatermarkColumnSpec updatedAtColumn,
         String whereClause,
         int srid,
         String layerName,
@@ -22,7 +23,15 @@ public record WatermarkTableSpec(
         String businessTargetTable,
         String businessTargetPrimaryKey
 ) {
+    public String sourceCreationDateColumn() {
+        return creationDateColumn.sourceColumn();
+    }
+
     public String sourceUpdatedAtColumn() {
-        return watermarkColumn.sourceColumn();
+        return updatedAtColumn == null ? null : updatedAtColumn.sourceColumn();
+    }
+
+    public boolean hasUpdatedAtColumn() {
+        return updatedAtColumn != null;
     }
 }
