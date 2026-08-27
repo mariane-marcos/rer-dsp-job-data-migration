@@ -44,9 +44,7 @@ public class AreaOfInterestTableDdlBuilder {
     public List<String> buildBusinessTargetStatements(AreaOfInterestTableMetadata metadata) {
         List<String> statements = new ArrayList<>();
         statements.add(buildBusinessCreateTable(metadata));
-        if (metadata.hasUpdatedAtColumn()) {
-            statements.add(buildBusinessUpdatedAtIndex(metadata));
-        }
+        statements.add(buildBusinessUpdatedAtIndex(metadata));
         statements.add(buildBusinessCreatedAtIndex(metadata));
         return statements;
     }
@@ -113,6 +111,9 @@ public class AreaOfInterestTableDdlBuilder {
                 if (emittedTargetColumns.add(theme)) {
                     columnDefinitions.add(quote(theme) + " numeric");
                 }
+            }
+            if (emittedTargetColumns.add(AreaOfInterestConfig.UPDATED_AT_COLUMN)) {
+                columnDefinitions.add(quote(AreaOfInterestConfig.UPDATED_AT_COLUMN) + " timestamptz");
             }
         }
         return columnDefinitions;

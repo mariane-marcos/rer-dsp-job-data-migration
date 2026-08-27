@@ -79,6 +79,58 @@ class AreaOfInterestTableDdlBuilderTest {
         assertTrue(ddl.contains("\"theme_4\" numeric"));
     }
 
+    @Test
+    void buildBusinessCreateTable_AlwaysIncludesUpdatedAtWhenSourceOmitsIt() {
+        AreaOfInterestTableMetadata metadata = sampleMetadataWithoutSourceUpdatedAt(List.of());
+
+        String ddl = builder.buildBusinessCreateTable(metadata);
+
+        assertTrue(ddl.contains("\"updated_at\" timestamptz"));
+        assertTrue(ddl.contains("\"theme_1\" numeric"));
+    }
+
+    @Test
+    void buildBusinessTargetStatements_IncludesUpdatedAtIndexOnBusinessTarget() {
+        AreaOfInterestTableMetadata metadata = sampleMetadataWithoutSourceUpdatedAt(List.of());
+
+        List<String> statements = builder.buildBusinessTargetStatements(metadata);
+
+        assertTrue(statements.stream().anyMatch(sql -> sql.contains("\"updated_at\" timestamptz")));
+        assertTrue(statements.stream().anyMatch(sql -> sql.contains("_business_updated_at")));
+    }
+
+    private static AreaOfInterestTableMetadata sampleMetadataWithoutSourceUpdatedAt(
+            List<String> businessOnlySourceColumns
+    ) {
+        List<ColumnMetadata> columns = new java.util.ArrayList<>(List.of(
+                new ColumnMetadata("id", "int8", null, null, null, false, false),
+                new ColumnMetadata("creation_date", "timestamptz", null, null, null, false, false),
+                new ColumnMetadata("territory_level_3_fk", "int8", null, null, null, false, false),
+                new ColumnMetadata("total_area_ha", "numeric", null, null, null, false, false),
+                new ColumnMetadata("geom", "geometry", null, null, null, true, true)
+        ));
+        for (String businessOnly : businessOnlySourceColumns) {
+            columns.add(new ColumnMetadata(businessOnly, "numeric", null, null, null, true, false));
+        }
+        return new AreaOfInterestTableMetadata(
+                "area_of_interest",
+                "chile-conservation-units",
+                new QualifiedTable("conservation", "conservation_units"),
+                new QualifiedTable("dsp", "area_of_interest"),
+                "id",
+                TemporalTestFixtures.timestamptz("creation_date"),
+                null,
+                "territory_level_3_fk",
+                "total_area_ha",
+                "geom",
+                4674,
+                columns,
+                businessOnlySourceColumns,
+                List.of(),
+                "1=1"
+        );
+    }
+
     private static AreaOfInterestTableMetadata sampleMetadata(List<String> businessOnlySourceColumns) {
         List<ColumnMetadata> columns = new java.util.ArrayList<>(List.of(
                 new ColumnMetadata("id", "int8", null, null, null, false, false),
