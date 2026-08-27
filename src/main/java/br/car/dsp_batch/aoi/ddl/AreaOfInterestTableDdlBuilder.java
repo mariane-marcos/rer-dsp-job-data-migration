@@ -33,7 +33,10 @@ public class AreaOfInterestTableDdlBuilder {
         List<String> statements = new ArrayList<>();
         statements.add(buildGeoCreateTable(metadata));
         statements.add(buildGeometryIndex(metadata));
-        statements.add(buildUpdatedAtIndex(metadata));
+        statements.add(buildCreatedAtIndex(metadata));
+        if (metadata.hasUpdatedAtColumn()) {
+            statements.add(buildUpdatedAtIndex(metadata));
+        }
         statements.addAll(buildSecondaryIndexes(metadata));
         return statements;
     }
@@ -42,6 +45,7 @@ public class AreaOfInterestTableDdlBuilder {
         List<String> statements = new ArrayList<>();
         statements.add(buildBusinessCreateTable(metadata));
         statements.add(buildBusinessUpdatedAtIndex(metadata));
+        statements.add(buildBusinessCreatedAtIndex(metadata));
         return statements;
     }
 
@@ -108,12 +112,16 @@ public class AreaOfInterestTableDdlBuilder {
                     columnDefinitions.add(quote(theme) + " numeric");
                 }
             }
+            if (emittedTargetColumns.add(AreaOfInterestConfig.UPDATED_AT_COLUMN)) {
+                columnDefinitions.add(quote(AreaOfInterestConfig.UPDATED_AT_COLUMN) + " timestamptz");
+            }
         }
         return columnDefinitions;
     }
 
     private String resolveDdlType(String targetColumnName, ColumnMetadata column) {
-        if (AreaOfInterestConfig.UPDATED_AT_COLUMN.equals(targetColumnName)) {
+        if (AreaOfInterestConfig.CREATED_AT_COLUMN.equals(targetColumnName)
+                || AreaOfInterestConfig.UPDATED_AT_COLUMN.equals(targetColumnName)) {
             return "timestamptz";
         }
         if (AreaOfInterestConfig.ID_COLUMN.equals(targetColumnName)) {
@@ -130,6 +138,20 @@ public class AreaOfInterestTableDdlBuilder {
         return "CREATE INDEX IF NOT EXISTS " + quote(indexName)
                 + " ON " + metadata.qualifiedTargetTable()
                 + " USING GIST (" + quote(metadata.resolveTargetGeometryColumn()) + ")";
+    }
+
+    public String buildCreatedAtIndex(AreaOfInterestTableMetadata metadata) {
+        String indexName = sanitizeIndexName(metadata.targetTable().table() + "_created_at");
+        return "CREATE INDEX IF NOT EXISTS " + quote(indexName)
+                + " ON " + metadata.qualifiedTargetTable()
+                + " (" + quote(AreaOfInterestConfig.CREATED_AT_COLUMN) + ")";
+    }
+
+    public String buildBusinessCreatedAtIndex(AreaOfInterestTableMetadata metadata) {
+        String indexName = sanitizeIndexName(metadata.targetTable().table() + "_business_created_at");
+        return "CREATE INDEX IF NOT EXISTS " + quote(indexName)
+                + " ON " + metadata.qualifiedTargetTable()
+                + " (" + quote(AreaOfInterestConfig.CREATED_AT_COLUMN) + ")";
     }
 
     public String buildUpdatedAtIndex(AreaOfInterestTableMetadata metadata) {
@@ -201,7 +223,8 @@ public class AreaOfInterestTableDdlBuilder {
         if (only.equals(metadata.resolveTargetGeometryColumn()) && "gist".equalsIgnoreCase(method)) {
             return true;
         }
-        return only.equals(AreaOfInterestConfig.UPDATED_AT_COLUMN);
+        return only.equals(AreaOfInterestConfig.UPDATED_AT_COLUMN)
+                || only.equals(AreaOfInterestConfig.CREATED_AT_COLUMN);
     }
 
     private String sanitizeIndexName(String name) {

@@ -7,7 +7,6 @@ import br.car.dsp_batch.sync.WatermarkChangeDetectionEngine;
 import br.car.dsp_batch.sync.WatermarkTableSpecs;
 import br.car.dsp_batch.temporal.BatchTemporalProperties;
 import br.car.dsp_batch.temporal.TemporalSchemaSupport;
-import br.car.dsp_batch.temporal.WatermarkColumnSpec;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.batch.core.StepContribution;
 import org.springframework.batch.core.scope.context.ChunkContext;
@@ -51,9 +50,10 @@ public class ChangeDetectionTasklet implements Tasklet {
         AdministrativeUnitPersistenceService.requirePositiveSrid(tableConfig);
         JobTableConfigValidator.requireWatermarkFields(tableConfig);
 
-        WatermarkColumnSpec watermarkColumn = temporalSchemaSupport.resolveWatermarkColumn(
+        var temporalColumns = temporalSchemaSupport.resolveTemporalColumns(
                 sourceJdbc,
                 tableConfig.getSourceTable(),
+                tableConfig.getCreationDateColumn(),
                 tableConfig.getUpdatedAtColumn(),
                 batchTemporalProperties.resolvePolicy(
                         tableConfig.getSourceTimezone(),
@@ -61,17 +61,25 @@ public class ChangeDetectionTasklet implements Tasklet {
                 )
         );
 
-        String targetUpdatedAt = tableConfig.resolveTargetColumn(tableConfig.getUpdatedAtColumn());
+        String targetCreatedAt = tableConfig.resolveTargetColumn(tableConfig.getCreationDateColumn());
         temporalSchemaSupport.requireDestinationTimestamptz(
-                targetJdbc, tableConfig.getTargetTable(), targetUpdatedAt);
+                targetJdbc, tableConfig.getTargetTable(), targetCreatedAt);
         temporalSchemaSupport.requireDestinationTimestamptz(
-                geoTargetJdbc, tableConfig.getTargetTable(), targetUpdatedAt);
+                geoTargetJdbc, tableConfig.getTargetTable(), targetCreatedAt);
+
+        if (tableConfig.getUpdatedAtColumn() != null && !tableConfig.getUpdatedAtColumn().isBlank()) {
+            String targetUpdatedAt = tableConfig.resolveTargetColumn(tableConfig.getUpdatedAtColumn());
+            temporalSchemaSupport.requireDestinationTimestamptz(
+                    targetJdbc, tableConfig.getTargetTable(), targetUpdatedAt);
+            temporalSchemaSupport.requireDestinationTimestamptz(
+                    geoTargetJdbc, tableConfig.getTargetTable(), targetUpdatedAt);
+        }
 
         engine.detectChanges(
                 sourceJdbc,
                 geoTargetJdbc,
                 targetJdbc,
-                WatermarkTableSpecs.fromJobTableConfig(tableConfig, watermarkColumn),
+                WatermarkTableSpecs.fromJobTableConfig(tableConfig, temporalColumns),
                 chunkContext
         );
         return RepeatStatus.FINISHED;

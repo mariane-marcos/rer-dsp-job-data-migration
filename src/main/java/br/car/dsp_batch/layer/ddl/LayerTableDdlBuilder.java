@@ -30,9 +30,19 @@ public class LayerTableDdlBuilder {
         statements.add(buildCreateTable(metadata));
         statements.add(buildGeometryIndex(metadata));
         statements.add(buildAreaOfInterestIdIndex(metadata));
-        statements.add(buildUpdatedAtIndex(metadata));
+        statements.add(buildCreatedAtIndex(metadata));
+        if (metadata.hasUpdatedAtColumn()) {
+            statements.add(buildUpdatedAtIndex(metadata));
+        }
         statements.addAll(buildSecondaryIndexes(metadata));
         return statements;
+    }
+
+    public String buildCreatedAtIndex(LayerTableMetadata metadata) {
+        String indexName = sanitizeIndexName(metadata.targetTable().table() + "_created_at");
+        return "CREATE INDEX IF NOT EXISTS " + quote(indexName)
+                + " ON " + metadata.qualifiedTargetTable()
+                + " (" + quote(LayerConfig.CREATED_AT_COLUMN) + ")";
     }
 
     public String buildUpdatedAtIndex(LayerTableMetadata metadata) {
@@ -82,10 +92,11 @@ public class LayerTableDdlBuilder {
     /**
      * DSP contract types, independent of the type at the origin.
      * {@code id} and {@code area_of_interest_id} in VARCHAR to align with the AOI;
-     * {@code updated_at} in timestamptz.
+     * {@code created_at} and {@code updated_at} in timestamptz.
      */
     private String resolveDdlType(String targetColumnName, ColumnMetadata column) {
-        if (LayerConfig.UPDATED_AT_COLUMN.equals(targetColumnName)) {
+        if (LayerConfig.CREATED_AT_COLUMN.equals(targetColumnName)
+                || LayerConfig.UPDATED_AT_COLUMN.equals(targetColumnName)) {
             return "timestamptz";
         }
         if (LayerConfig.ID_COLUMN.equals(targetColumnName)
@@ -171,6 +182,9 @@ public class LayerTableDdlBuilder {
             return true;
         }
         if (only.equals(LayerConfig.AREA_OF_INTEREST_ID_COLUMN)) {
+            return true;
+        }
+        if (only.equals(LayerConfig.CREATED_AT_COLUMN)) {
             return true;
         }
         return only.equals(LayerConfig.UPDATED_AT_COLUMN);

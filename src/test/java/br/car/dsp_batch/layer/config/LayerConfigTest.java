@@ -39,6 +39,7 @@ class LayerConfigTest {
         assertEquals("id", LayerConfig.ID_COLUMN);
         assertEquals("area_of_interest_id", LayerConfig.AREA_OF_INTEREST_ID_COLUMN);
         assertEquals("geom", LayerConfig.GEOMETRY_COLUMN);
+        assertEquals("created_at", LayerConfig.CREATED_AT_COLUMN);
         assertEquals("updated_at", LayerConfig.UPDATED_AT_COLUMN);
         assertEquals("label", LayerConfig.LABEL_COLUMN);
     }
@@ -48,15 +49,17 @@ class LayerConfigTest {
         LayerConfig config = new LayerConfig();
         config.setPrimaryKey("source_pk");
         config.setAreaOfInterestIdColumn("source_aoi_fk");
+        config.setCreationDateColumn("source_created_at");
         config.setUpdatedAtColumn("source_updated_at");
         config.setLabelColumn("source_name");
         config.setGeometryColumn("source_geom");
-        config.setPersistColumns(List.of("codigo", "area_ha"));
+        config.setAdditionalColumns(List.of("codigo", "area_ha"));
 
         assertEquals(
                 List.of(
                         "source_pk",
                         "source_aoi_fk",
+                        "source_created_at",
                         "source_updated_at",
                         "source_name",
                         "source_geom",

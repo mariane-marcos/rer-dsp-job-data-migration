@@ -20,7 +20,7 @@ public class SyncStateRepository {
     private static final RowMapper<SyncState> ROW_MAPPER = (rs, rowNum) -> new SyncState(
             rs.getString("sync_key"),
             rs.getString("source_table"),
-            toInstant(rs.getObject("watermark_updated_at", OffsetDateTime.class)),
+            toInstant(rs.getObject("watermark_last_event_at", OffsetDateTime.class)),
             toInstant(rs.getObject("last_success_at", OffsetDateTime.class)),
             (Long) rs.getObject("last_job_execution_id"),
             toInstant(rs.getObject("last_orphan_check_at", OffsetDateTime.class))
@@ -36,7 +36,7 @@ public class SyncStateRepository {
         try {
             SyncState state = batchJdbcTemplate.queryForObject(
                     """
-                    SELECT sync_key, source_table, watermark_updated_at, last_success_at,
+                    SELECT sync_key, source_table, watermark_last_event_at, last_success_at,
                            last_job_execution_id, last_orphan_check_at
                     FROM batch_job_execution_sync_state
                     WHERE sync_key = ?
@@ -51,35 +51,35 @@ public class SyncStateRepository {
     }
 
     public Optional<Instant> findWatermark(String syncKey) {
-        return findBySyncKey(syncKey).map(SyncState::watermarkUpdatedAt);
+        return findBySyncKey(syncKey).map(SyncState::watermarkLastEventAt);
     }
 
     /**
      * Advances the watermark after a successful run.
-     * If {@code watermarkUpdatedAt} is null, keeps the current value.
+     * If {@code watermarkLastEventAt} is null, keeps the current value.
      */
     public void advanceWatermark(String syncKey,
                                  String sourceTable,
-                                 Instant watermarkUpdatedAt,
+                                 Instant watermarkLastEventAt,
                                  long jobExecutionId) {
         Instant now = Instant.now();
         batchJdbcTemplate.update(
                 """
                 INSERT INTO batch_job_execution_sync_state (
-                    sync_key, source_table, watermark_updated_at, last_success_at,
+                    sync_key, source_table, watermark_last_event_at, last_success_at,
                     last_job_execution_id, last_orphan_check_at, updated_at
                 ) VALUES (?, ?, ?, ?, ?, NULL, ?)
                 ON CONFLICT (sync_key) DO UPDATE SET
                     source_table = EXCLUDED.source_table,
-                    watermark_updated_at = COALESCE(EXCLUDED.watermark_updated_at,
-                        batch_job_execution_sync_state.watermark_updated_at),
+                    watermark_last_event_at = COALESCE(EXCLUDED.watermark_last_event_at,
+                        batch_job_execution_sync_state.watermark_last_event_at),
                     last_success_at = EXCLUDED.last_success_at,
                     last_job_execution_id = EXCLUDED.last_job_execution_id,
                     updated_at = EXCLUDED.updated_at
                 """,
                 syncKey,
                 sourceTable,
-                toOffsetDateTime(watermarkUpdatedAt),
+                toOffsetDateTime(watermarkLastEventAt),
                 toOffsetDateTime(now),
                 jobExecutionId,
                 toOffsetDateTime(now)
@@ -91,7 +91,7 @@ public class SyncStateRepository {
         batchJdbcTemplate.update(
                 """
                 INSERT INTO batch_job_execution_sync_state (
-                    sync_key, source_table, watermark_updated_at, last_success_at,
+                    sync_key, source_table, watermark_last_event_at, last_success_at,
                     last_job_execution_id, last_orphan_check_at, updated_at
                 ) VALUES (?, ?, NULL, NULL, NULL, ?, ?)
                 ON CONFLICT (sync_key) DO UPDATE SET

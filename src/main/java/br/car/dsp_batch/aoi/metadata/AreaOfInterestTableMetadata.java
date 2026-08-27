@@ -20,11 +20,11 @@ public record AreaOfInterestTableMetadata(
         QualifiedTable sourceTable,
         QualifiedTable targetTable,
         String primaryKeyColumn,
-        String creationDateSourceColumn,
-        String communeIdSourceColumn,
+        WatermarkColumnSpec creationDateColumn,
+        WatermarkColumnSpec updatedAtColumn,
+        String territoryLevel3SourceColumn,
         String totalAreaSourceColumn,
         String geometryColumn,
-        WatermarkColumnSpec watermarkColumn,
         int srid,
         List<ColumnMetadata> columns,
         List<String> businessOnlySourceColumns,
@@ -36,8 +36,16 @@ public record AreaOfInterestTableMetadata(
         return businessOnlySourceColumns.contains(sourceColumnName);
     }
 
+    public String creationDateSourceColumn() {
+        return creationDateColumn.sourceColumn();
+    }
+
     public String updatedAtSourceColumn() {
-        return watermarkColumn.sourceColumn();
+        return updatedAtColumn == null ? null : updatedAtColumn.sourceColumn();
+    }
+
+    public boolean hasUpdatedAtColumn() {
+        return updatedAtColumn != null;
     }
 
     public List<String> sourceNonGeometryColumnNames() {
@@ -78,17 +86,21 @@ public record AreaOfInterestTableMetadata(
         return AreaOfInterestConfig.UPDATED_AT_COLUMN;
     }
 
+    public String resolveTargetCreatedAtColumn() {
+        return AreaOfInterestConfig.CREATED_AT_COLUMN;
+    }
+
     public String resolveTargetColumnName(String sourceColumnName) {
         if (sourceColumnName.equals(primaryKeyColumn)) {
             return AreaOfInterestConfig.ID_COLUMN;
         }
-        if (sourceColumnName.equals(creationDateSourceColumn)) {
-            return AreaOfInterestConfig.REGISTRATION_DATE_COLUMN;
+        if (sourceColumnName.equals(creationDateSourceColumn())) {
+            return AreaOfInterestConfig.CREATED_AT_COLUMN;
         }
-        if (sourceColumnName.equals(updatedAtSourceColumn())) {
+        if (hasUpdatedAtColumn() && sourceColumnName.equals(updatedAtSourceColumn())) {
             return AreaOfInterestConfig.UPDATED_AT_COLUMN;
         }
-        if (sourceColumnName.equals(communeIdSourceColumn)) {
+        if (sourceColumnName.equals(territoryLevel3SourceColumn)) {
             return AreaOfInterestConfig.TERRITORY_LEVEL_3_ID_COLUMN;
         }
         if (sourceColumnName.equals(totalAreaSourceColumn)) {
@@ -104,14 +116,14 @@ public record AreaOfInterestTableMetadata(
         if (AreaOfInterestConfig.ID_COLUMN.equals(targetColumnName)) {
             return primaryKeyColumn;
         }
-        if (AreaOfInterestConfig.REGISTRATION_DATE_COLUMN.equals(targetColumnName)) {
-            return creationDateSourceColumn;
+        if (AreaOfInterestConfig.CREATED_AT_COLUMN.equals(targetColumnName)) {
+            return creationDateSourceColumn();
         }
         if (AreaOfInterestConfig.UPDATED_AT_COLUMN.equals(targetColumnName)) {
             return updatedAtSourceColumn();
         }
         if (AreaOfInterestConfig.TERRITORY_LEVEL_3_ID_COLUMN.equals(targetColumnName)) {
-            return communeIdSourceColumn;
+            return territoryLevel3SourceColumn;
         }
         if (AreaOfInterestConfig.AREA_COLUMN.equals(targetColumnName)) {
             return totalAreaSourceColumn;

@@ -29,13 +29,22 @@ class LayersPropertiesTest {
     }
 
     @Test
-    void validate_RejectsMissingLabelColumn() {
+    void validate_AcceptsMissingLabelColumn() {
         LayerConfig layer = validLayer();
         layer.setLabelColumn(" ");
         LayersProperties properties = propertiesWith(layer);
 
+        assertDoesNotThrow(properties::validate);
+    }
+
+    @Test
+    void validate_RejectsMissingCreationDateColumn() {
+        LayerConfig layer = validLayer();
+        layer.setCreationDateColumn(null);
+        LayersProperties properties = propertiesWith(layer);
+
         IllegalStateException ex = assertThrows(IllegalStateException.class, properties::validate);
-        assertTrue(ex.getMessage().contains("label-column"));
+        assertTrue(ex.getMessage().contains("creation-date-column"));
     }
 
     @Test
@@ -49,9 +58,9 @@ class LayersPropertiesTest {
     }
 
     @Test
-    void validate_RejectsPersistColumnCollidingWithCanonicalName() {
+    void validate_RejectsAdditionalColumnCollidingWithCanonicalName() {
         LayerConfig layer = validLayer();
-        layer.setPersistColumns(List.of("label"));
+        layer.setAdditionalColumns(List.of("label"));
         LayersProperties properties = propertiesWith(layer);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, properties::validate);
@@ -59,9 +68,9 @@ class LayersPropertiesTest {
     }
 
     @Test
-    void validate_RejectsPersistColumnDuplicatingRequiredMapping() {
+    void validate_RejectsAdditionalColumnDuplicatingRequiredMapping() {
         LayerConfig layer = validLayer();
-        layer.setPersistColumns(List.of("source_name"));
+        layer.setAdditionalColumns(List.of("source_name"));
         LayersProperties properties = propertiesWith(layer);
 
         IllegalStateException ex = assertThrows(IllegalStateException.class, properties::validate);
@@ -96,10 +105,11 @@ class LayersPropertiesTest {
         layer.setSourceTable("src_schema.tabela");
         layer.setPrimaryKey("source_pk");
         layer.setAreaOfInterestIdColumn("cod_imovel");
+        layer.setCreationDateColumn("data_criacao");
         layer.setUpdatedAtColumn("data_atualizacao");
         layer.setLabelColumn("source_name");
         layer.setGeometryColumn("source_geom");
-        layer.setPersistColumns(List.of("codigo", "area_ha"));
+        layer.setAdditionalColumns(List.of("codigo", "area_ha"));
         return layer;
     }
 }

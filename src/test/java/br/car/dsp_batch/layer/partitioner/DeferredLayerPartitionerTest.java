@@ -25,27 +25,32 @@ class DeferredLayerPartitionerTest {
     }
 
     @Test
-    void combineWhere_KeepsOnlyUpdatedAtFilter() {
+    void combineWhere_KeepsOnlyChangeDetectionFilter() {
         assertEquals(
-                "data_atualizacao IS NOT NULL",
-                WatermarkSql.combineWhere("1=1", "data_atualizacao IS NOT NULL")
+                "data_criacao IS NOT NULL",
+                WatermarkSql.combineWhere("1=1", "data_criacao IS NOT NULL")
         );
     }
 
     @Test
-    void combineWhere_CombinesBridgePredicate() {
+    void combineWhere_CombinesDualDatePredicate() {
         Instant wm = Instant.parse("2026-08-10T15:00:00Z");
-        String filter = WatermarkSql.buildUpdatedAtFilter(
-                TemporalTestFixtures.timestamptz("data_atualizacao"), wm);
+        String filter = WatermarkSql.buildChangeDetectionFilter(
+                TemporalTestFixtures.timestamptz("data_criacao"),
+                TemporalTestFixtures.timestamptz("data_atualizacao"),
+                wm);
         assertEquals(
                 "(status = 'A') AND " + filter,
                 WatermarkSql.combineWhere("status = 'A'", filter)
         );
-        assertTrue(filter.contains("TIMESTAMP WITH TIME ZONE '2026-08-10T15:00:00Z'"));
+        assertTrue(filter.contains("data_criacao IS NOT NULL"));
+        assertTrue(filter.contains("data_atualizacao IS NOT NULL"));
         assertEquals(
                 filter,
-                WatermarkTemporalBridge.buildPredicate(
-                        TemporalTestFixtures.timestamptz("data_atualizacao"), wm).sqlFragment()
+                WatermarkTemporalBridge.buildChangeDetectionPredicate(
+                        TemporalTestFixtures.timestamptz("data_criacao"),
+                        TemporalTestFixtures.timestamptz("data_atualizacao"),
+                        wm).sqlFragment()
         );
     }
 }

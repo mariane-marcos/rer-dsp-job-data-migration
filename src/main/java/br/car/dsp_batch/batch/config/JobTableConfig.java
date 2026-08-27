@@ -79,7 +79,10 @@ public interface JobTableConfig {
      */
     int getSrid();
 
-    /** Source column holding the last update timestamp for watermark sync. */
+    /** Source column holding the record creation timestamp (mandatory). */
+    String getCreationDateColumn();
+
+    /** Source column holding the last update timestamp (optional). */
     String getUpdatedAtColumn();
 
     /**

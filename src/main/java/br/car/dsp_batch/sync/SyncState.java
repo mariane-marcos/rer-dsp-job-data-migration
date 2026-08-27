@@ -8,7 +8,7 @@ import java.time.Instant;
 public record SyncState(
         String syncKey,
         String sourceTable,
-        Instant watermarkUpdatedAt,
+        Instant watermarkLastEventAt,
         Instant lastSuccessAt,
         Long lastJobExecutionId,
         Instant lastOrphanCheckAt

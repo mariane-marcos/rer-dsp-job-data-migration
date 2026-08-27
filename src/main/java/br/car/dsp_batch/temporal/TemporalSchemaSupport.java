@@ -70,20 +70,39 @@ public class TemporalSchemaSupport {
 
     public WatermarkColumnSpec resolveWatermarkColumn(JdbcTemplate sourceJdbc,
                                                       String qualifiedSourceTable,
-                                                      String updatedAtColumn,
+                                                      String columnName,
                                                       SourceTemporalPolicy policy) {
-        String udt = requireUdtName(sourceJdbc, qualifiedSourceTable, updatedAtColumn);
+        String udt = requireUdtName(sourceJdbc, qualifiedSourceTable, columnName);
         TemporalType type = TemporalTypeClassifier.classify(udt);
         if (!type.isWatermarkSupported()) {
             throw new IllegalStateException(
-                    "updated-at-column '" + updatedAtColumn + "' has type '" + udt
+                    "column '" + columnName + "' has type '" + udt
                             + "'. Expected timestamp, timestamptz or date "
                             + "(time/timetz/text are not allowed).");
         }
-        if (type == TemporalType.DATE) {
-            // Granularity warning is logged by callers that have a logger.
+        return WatermarkColumnSpec.of(columnName.trim(), type, policy);
+    }
+
+    public WatermarkColumnSpec resolveOptionalWatermarkColumn(JdbcTemplate sourceJdbc,
+                                                              String qualifiedSourceTable,
+                                                              String columnName,
+                                                              SourceTemporalPolicy policy) {
+        if (columnName == null || columnName.isBlank()) {
+            return null;
         }
-        return WatermarkColumnSpec.of(updatedAtColumn.trim(), type, policy);
+        return resolveWatermarkColumn(sourceJdbc, qualifiedSourceTable, columnName, policy);
+    }
+
+    public TemporalColumnSpecs resolveTemporalColumns(JdbcTemplate sourceJdbc,
+                                                      String qualifiedSourceTable,
+                                                      String creationDateColumn,
+                                                      String updatedAtColumn,
+                                                      SourceTemporalPolicy policy) {
+        WatermarkColumnSpec creation = resolveWatermarkColumn(
+                sourceJdbc, qualifiedSourceTable, creationDateColumn, policy);
+        WatermarkColumnSpec updated = resolveOptionalWatermarkColumn(
+                sourceJdbc, qualifiedSourceTable, updatedAtColumn, policy);
+        return TemporalColumnSpecs.of(creation, updated);
     }
 
     public static String normalizeUdt(String udtName) {

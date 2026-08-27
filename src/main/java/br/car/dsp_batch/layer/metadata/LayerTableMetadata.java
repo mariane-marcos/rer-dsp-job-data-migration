@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Set;
 
 import static br.car.dsp_batch.layer.config.LayerConfig.AREA_OF_INTEREST_ID_COLUMN;
+import static br.car.dsp_batch.layer.config.LayerConfig.CREATED_AT_COLUMN;
 import static br.car.dsp_batch.layer.config.LayerConfig.GEOMETRY_COLUMN;
 import static br.car.dsp_batch.layer.config.LayerConfig.ID_COLUMN;
 import static br.car.dsp_batch.layer.config.LayerConfig.LABEL_COLUMN;
@@ -25,7 +26,8 @@ public record LayerTableMetadata(
         String primaryKeyColumn,
         String geometryColumn,
         String areaOfInterestIdSourceColumn,
-        WatermarkColumnSpec watermarkColumn,
+        WatermarkColumnSpec creationDateColumn,
+        WatermarkColumnSpec updatedAtColumn,
         String labelSourceColumn,
         int srid,
         List<ColumnMetadata> columns,
@@ -33,8 +35,20 @@ public record LayerTableMetadata(
         String whereClause
 ) {
 
+    public String creationDateSourceColumn() {
+        return creationDateColumn.sourceColumn();
+    }
+
     public String updatedAtSourceColumn() {
-        return watermarkColumn.sourceColumn();
+        return updatedAtColumn == null ? null : updatedAtColumn.sourceColumn();
+    }
+
+    public boolean hasUpdatedAtColumn() {
+        return updatedAtColumn != null;
+    }
+
+    public boolean hasLabelColumn() {
+        return labelSourceColumn != null && !labelSourceColumn.isBlank();
     }
 
     public List<String> sourceNonGeometryColumnNames() {
@@ -73,6 +87,11 @@ public record LayerTableMetadata(
         return UPDATED_AT_COLUMN;
     }
 
+    /** Creation column name on geo-target (always {@code created_at}). */
+    public String resolveTargetCreatedAtColumn() {
+        return CREATED_AT_COLUMN;
+    }
+
     /** Display-name column on geo-target (always {@code label}). */
     public String resolveTargetLabelColumn() {
         return LABEL_COLUMN;
@@ -85,14 +104,17 @@ public record LayerTableMetadata(
         if (sourceColumnName.equals(geometryColumn)) {
             return GEOMETRY_COLUMN;
         }
-        if (sourceColumnName.equals(updatedAtSourceColumn())) {
+        if (sourceColumnName.equals(creationDateSourceColumn())) {
+            return CREATED_AT_COLUMN;
+        }
+        if (hasUpdatedAtColumn() && sourceColumnName.equals(updatedAtSourceColumn())) {
             return UPDATED_AT_COLUMN;
+        }
+        if (hasLabelColumn() && sourceColumnName.equals(labelSourceColumn)) {
+            return LABEL_COLUMN;
         }
         if (sourceColumnName.equals(areaOfInterestIdSourceColumn)) {
             return AREA_OF_INTEREST_ID_COLUMN;
-        }
-        if (sourceColumnName.equals(labelSourceColumn)) {
-            return LABEL_COLUMN;
         }
         return sourceColumnName;
     }
@@ -103,6 +125,9 @@ public record LayerTableMetadata(
         }
         if (GEOMETRY_COLUMN.equals(targetColumnName)) {
             return geometryColumn;
+        }
+        if (CREATED_AT_COLUMN.equals(targetColumnName)) {
+            return creationDateSourceColumn();
         }
         if (UPDATED_AT_COLUMN.equals(targetColumnName)) {
             return updatedAtSourceColumn();

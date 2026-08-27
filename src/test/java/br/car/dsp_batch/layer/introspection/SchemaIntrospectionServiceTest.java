@@ -42,7 +42,7 @@ class SchemaIntrospectionServiceTest {
     @Test
     void introspect_SelectsOnlyConfiguredColumnsAndMapsCanonicalTargets() {
         LayerConfig config = baseConfig();
-        config.setPersistColumns(List.of("codigo"));
+        config.setAdditionalColumns(List.of("codigo"));
         config.setSrid(4674);
 
         stubTableExists();
@@ -50,6 +50,7 @@ class SchemaIntrospectionServiceTest {
                 column("source_pk", "int8", false),
                 column("conservation_unit_id", "int8", false),
                 column("nome", "varchar", false),
+                column("data_criacao", "timestamptz", false),
                 column("data_atualizacao", "timestamptz", false),
                 column("codigo", "varchar", false),
                 column("ignored", "text", false),
@@ -67,7 +68,7 @@ class SchemaIntrospectionServiceTest {
         assertEquals("the_geom", metadata.geometryColumn());
         assertEquals("geom", metadata.resolveTargetGeometryColumn());
         assertEquals(
-                List.of("source_pk", "conservation_unit_id", "nome", "data_atualizacao", "codigo", "the_geom"),
+                List.of("source_pk", "conservation_unit_id", "data_criacao", "data_atualizacao", "nome", "codigo", "the_geom"),
                 metadata.columns().stream().map(ColumnMetadata::name).toList()
         );
         assertFalse(metadata.columns().stream().anyMatch(c -> "ignored".equals(c.name())));
@@ -83,6 +84,7 @@ class SchemaIntrospectionServiceTest {
                 column("source_pk", "int8", false),
                 column("conservation_unit_id", "int8", false),
                 column("nome", "varchar", false),
+                column("data_criacao", "timestamptz", false),
                 column("data_atualizacao", "timestamptz", false),
                 column("centroid", "geometry", true),
                 column("the_geom", "geometry", true)
@@ -107,6 +109,7 @@ class SchemaIntrospectionServiceTest {
                 column("source_pk", "int8", false),
                 column("conservation_unit_id", "int8", false),
                 column("nome", "varchar", false),
+                column("data_criacao", "timestamptz", false),
                 column("data_atualizacao", "timestamptz", false),
                 column("the_geom", "geometry", true)
         );
@@ -128,6 +131,7 @@ class SchemaIntrospectionServiceTest {
                 column("source_pk", "int8", false),
                 column("conservation_unit_id", "int8", false),
                 column("nome", "varchar", false),
+                column("data_criacao", "timestamptz", false),
                 column("data_atualizacao", "timestamptz", false),
                 column("the_geom", "geometry", true)
         );
@@ -150,6 +154,7 @@ class SchemaIntrospectionServiceTest {
                 column("source_pk", "int8", false),
                 column("conservation_unit_id", "int8", false),
                 column("nome", "varchar", false),
+                column("data_criacao", "timestamptz", false),
                 column("data_atualizacao", "timestamptz", false),
                 column("the_geom", "geometry", true)
         );
@@ -176,6 +181,7 @@ class SchemaIntrospectionServiceTest {
                 column("source_pk", "int8", false),
                 column("conservation_unit_id", "int8", false),
                 column("nome", "varchar", false),
+                column("data_criacao", "timestamptz", false),
                 column("data_atualizacao", "timestamptz", false),
                 column("the_geom", "geometry", true)
         );
@@ -200,6 +206,7 @@ class SchemaIntrospectionServiceTest {
                 column("source_pk", "int8", false),
                 column("conservation_unit_id", "int8", false),
                 column("nome", "varchar", false),
+                column("data_criacao", "timestamptz", false),
                 column("data_atualizacao", "timestamptz", false),
                 column("the_geom", "geometry", true)
         );
@@ -223,6 +230,7 @@ class SchemaIntrospectionServiceTest {
         stubColumns(
                 column("source_pk", "int8", false),
                 column("conservation_unit_id", "int8", false),
+                column("data_criacao", "timestamptz", false),
                 column("nome", "varchar", false),
                 column("the_geom", "geometry", true)
         );
@@ -248,6 +256,7 @@ class SchemaIntrospectionServiceTest {
         stubColumns(
                 column("source_pk", "int8", false),
                 column("conservation_unit_id", "int8", false),
+                column("data_criacao", "timestamptz", false),
                 column("nome", "varchar", false),
                 column("data_atualizacao", "timestamp", false),
                 column("the_geom", "geometry", true)
@@ -263,7 +272,7 @@ class SchemaIntrospectionServiceTest {
     @Test
     void introspect_FailsWhenPersistColumnMissing() {
         LayerConfig config = baseConfig();
-        config.setPersistColumns(List.of("nao_existe"));
+        config.setAdditionalColumns(List.of("nao_existe"));
         config.setSrid(4674);
 
         stubTableExists();
@@ -271,6 +280,7 @@ class SchemaIntrospectionServiceTest {
                 column("source_pk", "int8", false),
                 column("conservation_unit_id", "int8", false),
                 column("nome", "varchar", false),
+                column("data_criacao", "timestamptz", false),
                 column("data_atualizacao", "timestamptz", false),
                 column("the_geom", "geometry", true)
         );
@@ -280,7 +290,7 @@ class SchemaIntrospectionServiceTest {
                 () -> service.introspect(jdbc, config)
         );
 
-        assertTrue(ex.getMessage().contains("persist-columns"));
+        assertTrue(ex.getMessage().contains("additional-columns"));
         assertTrue(ex.getMessage().contains("does not exist"));
     }
 
@@ -289,6 +299,7 @@ class SchemaIntrospectionServiceTest {
         config.setSourceTable("conservation.rivers");
         config.setPrimaryKey("source_pk");
         config.setAreaOfInterestIdColumn("conservation_unit_id");
+        config.setCreationDateColumn("data_criacao");
         config.setUpdatedAtColumn("data_atualizacao");
         config.setLabelColumn("nome");
         config.setGeometryColumn("the_geom");

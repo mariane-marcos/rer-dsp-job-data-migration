@@ -20,6 +20,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import static br.car.dsp_batch.layer.config.LayerConfig.AREA_OF_INTEREST_ID_COLUMN;
+import static br.car.dsp_batch.layer.config.LayerConfig.CREATED_AT_COLUMN;
+import static br.car.dsp_batch.layer.config.LayerConfig.ID_COLUMN;
 import static br.car.dsp_batch.layer.config.LayerConfig.UPDATED_AT_COLUMN;
 
 /**
@@ -111,12 +114,17 @@ public class LayerFeaturePersistenceService {
                 for (String targetColumn : targetColumns) {
                     String sourceColumn = metadata.resolveSourceColumnName(targetColumn);
                     Object value = item.getAttribute(sourceColumn);
-                    if (UPDATED_AT_COLUMN.equals(targetColumn)) {
+                    if (CREATED_AT_COLUMN.equals(targetColumn)) {
                         var instant = WatermarkTemporalBridge.toInstant(
-                                value, metadata.watermarkColumn());
+                                value, metadata.creationDateColumn());
                         ps.setObject(index++, WatermarkTemporalBridge.toDspTimestamptz(instant));
-                    } else if (LayerConfig.ID_COLUMN.equals(targetColumn)
-                            || LayerConfig.AREA_OF_INTEREST_ID_COLUMN.equals(targetColumn)) {
+                    } else if (UPDATED_AT_COLUMN.equals(targetColumn)) {
+                        var instant = metadata.hasUpdatedAtColumn()
+                                ? WatermarkTemporalBridge.toInstant(value, metadata.updatedAtColumn())
+                                : null;
+                        ps.setObject(index++, WatermarkTemporalBridge.toDspTimestamptz(instant));
+                    } else if (ID_COLUMN.equals(targetColumn)
+                            || AREA_OF_INTEREST_ID_COLUMN.equals(targetColumn)) {
                         ps.setString(index++, value == null ? null : String.valueOf(value));
                     } else {
                         String udt = udtBySource.get(sourceColumn);

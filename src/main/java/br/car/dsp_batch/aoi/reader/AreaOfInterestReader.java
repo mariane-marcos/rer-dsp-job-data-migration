@@ -76,9 +76,12 @@ public class AreaOfInterestReader extends AbstractPartitionedPagingItemReader<La
             where.append(" AND (").append(configWhere).append(")");
         }
 
-        String updatedAtFilter = WatermarkSql.buildUpdatedAtFilter(metadata.watermarkColumn(), watermark);
-        if (updatedAtFilter != null) {
-            where.append(" AND ").append(updatedAtFilter);
+        String changeFilter = WatermarkSql.buildChangeDetectionFilter(
+                metadata.creationDateColumn(),
+                metadata.updatedAtColumn(),
+                watermark);
+        if (changeFilter != null) {
+            where.append(" AND ").append(changeFilter);
         }
 
         if (useIdRange) {

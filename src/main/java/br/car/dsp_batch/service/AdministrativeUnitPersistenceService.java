@@ -5,6 +5,7 @@ import br.car.dsp_batch.batch.dto.AdministrativeUnitDTO;
 import br.car.dsp_batch.geometry.GeometrySql;
 import br.car.dsp_batch.temporal.CommonTemporalHandler;
 import br.car.dsp_batch.temporal.TemporalTypeClassifier;
+import br.car.dsp_batch.temporal.TemporalColumnSpecs;
 import br.car.dsp_batch.temporal.WatermarkColumnSpec;
 import br.car.dsp_batch.temporal.WatermarkTemporalBridge;
 import lombok.extern.slf4j.Slf4j;
@@ -47,7 +48,7 @@ public class AdministrativeUnitPersistenceService {
 
     public void upsertAll(List<AdministrativeUnitDTO> items,
                           JobTableConfig tableConfig,
-                          WatermarkColumnSpec watermarkColumn) {
+                          TemporalColumnSpecs temporalColumns) {
         if (items == null || items.isEmpty()) {
             return;
         }
@@ -74,8 +75,8 @@ public class AdministrativeUnitPersistenceService {
             return;
         }
 
-        upsertBusinessTarget(validItems, tableConfig, watermarkColumn);
-        upsertGeoTarget(validItems, tableConfig, watermarkColumn);
+        upsertBusinessTarget(validItems, tableConfig, temporalColumns);
+        upsertGeoTarget(validItems, tableConfig, temporalColumns);
 
         log.info(
                 "Upserted {} records into business target {} and geo-target (skipped {} without geometry)",
@@ -87,7 +88,7 @@ public class AdministrativeUnitPersistenceService {
 
     private void upsertBusinessTarget(List<AdministrativeUnitDTO> items,
                                       JobTableConfig tableConfig,
-                                      WatermarkColumnSpec watermarkColumn) {
+                                      TemporalColumnSpecs temporalColumns) {
         List<String> sourceColumns = tableConfig.getAllBusinessPersistColumns();
         List<String> targetColumns = sourceColumns.stream()
                 .map(tableConfig::resolveTargetColumn)
@@ -128,7 +129,7 @@ public class AdministrativeUnitPersistenceService {
             targetJdbcTemplate.batchUpdate(sql, items, items.size(), (ps, item) -> {
                 int index = 1;
                 for (String column : sourceColumns) {
-                    index = bindAttribute(ps, index, item, column, tableConfig, watermarkColumn);
+                    index = bindAttribute(ps, index, item, column, tableConfig, temporalColumns);
                 }
                 ps.setString(index++, item.getGeometryGeoJson());
                 ps.setString(index, item.getGeometryGeoJson());
@@ -145,7 +146,7 @@ public class AdministrativeUnitPersistenceService {
 
     private void upsertGeoTarget(List<AdministrativeUnitDTO> items,
                                  JobTableConfig tableConfig,
-                                 WatermarkColumnSpec watermarkColumn) {
+                                 TemporalColumnSpecs temporalColumns) {
         List<String> sourceColumns = tableConfig.getPersistColumns();
         List<String> targetColumns = sourceColumns.stream()
                 .map(tableConfig::resolveTargetColumn)
@@ -182,7 +183,7 @@ public class AdministrativeUnitPersistenceService {
             geoTargetJdbcTemplate.batchUpdate(sql, items, items.size(), (ps, item) -> {
                 int index = 1;
                 for (String column : sourceColumns) {
-                    index = bindAttribute(ps, index, item, column, tableConfig, watermarkColumn);
+                    index = bindAttribute(ps, index, item, column, tableConfig, temporalColumns);
                 }
                 ps.setString(index, item.getGeometryGeoJson());
             });
@@ -201,13 +202,15 @@ public class AdministrativeUnitPersistenceService {
                               AdministrativeUnitDTO item,
                               String sourceColumn,
                               JobTableConfig tableConfig,
-                              WatermarkColumnSpec watermarkColumn) throws SQLException {
+                              TemporalColumnSpecs temporalColumns) throws SQLException {
         Object value = item.getAttribute(sourceColumn);
-        if (watermarkColumn != null
-                && sourceColumn.equalsIgnoreCase(watermarkColumn.sourceColumn())) {
-            var instant = WatermarkTemporalBridge.toInstant(value, watermarkColumn);
-            ps.setObject(index, WatermarkTemporalBridge.toDspTimestamptz(instant));
-            return index + 1;
+        if (temporalColumns != null) {
+            WatermarkColumnSpec spec = temporalColumns.specForSourceColumn(sourceColumn);
+            if (spec != null) {
+                var instant = WatermarkTemporalBridge.toInstant(value, spec);
+                ps.setObject(index, WatermarkTemporalBridge.toDspTimestamptz(instant));
+                return index + 1;
+            }
         }
         if (value != null && TemporalTypeClassifier.isTemporal(guessUdtFromValue(value))) {
             CommonTemporalHandler.write(

@@ -5,7 +5,6 @@ import br.car.dsp_batch.sync.SyncStateRepository;
 import br.car.dsp_batch.sync.WatermarkPartitionSupport;
 import br.car.dsp_batch.temporal.BatchTemporalProperties;
 import br.car.dsp_batch.temporal.TemporalSchemaSupport;
-import br.car.dsp_batch.temporal.WatermarkColumnSpec;
 import org.springframework.batch.core.partition.support.Partitioner;
 import org.springframework.batch.item.ExecutionContext;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -39,9 +38,10 @@ public class DeferredWatermarkPartitioner implements Partitioner {
     @Override
     public Map<String, ExecutionContext> partition(int gridSize) {
         var watermark = syncStateRepository.findWatermark(tableConfig.getSyncKey()).orElse(null);
-        WatermarkColumnSpec watermarkColumn = temporalSchemaSupport.resolveWatermarkColumn(
+        var temporalColumns = temporalSchemaSupport.resolveTemporalColumns(
                 new JdbcTemplate(sourceDataSource),
                 tableConfig.getSourceTable(),
+                tableConfig.getCreationDateColumn(),
                 tableConfig.getUpdatedAtColumn(),
                 batchTemporalProperties.resolvePolicy(
                         tableConfig.getSourceTimezone(),
@@ -50,7 +50,8 @@ public class DeferredWatermarkPartitioner implements Partitioner {
         );
         String whereClause = WatermarkPartitionSupport.resolveWhereClause(
                 tableConfig.getWhereClause(),
-                watermarkColumn,
+                temporalColumns.creationDateColumn(),
+                temporalColumns.updatedAtColumn(),
                 watermark
         );
         Partitioner delegate = WatermarkPartitionSupport.columnRangePartitioner(

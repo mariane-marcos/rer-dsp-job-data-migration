@@ -52,23 +52,27 @@ server:
   port: 8086
 
 batch:
-  source-timezone: America/Sao_Paulo
+  source-timezone: UTC
   admin-unit:
     level-1:
       source-table: source_admin_units.source_l1_continents
       target-table: target_admin_units.target_l1_continent
       primary-key: source_continent_pk
+      name-column: source_continent_name
       geometry-column: source_continent_geom
+      creation-date-column: source_created_at
       updated-at-column: source_updated_at
       where-clause: "1=1"
       persist-columns:
         - source_continent_pk
         - source_continent_name
+        - source_created_at
         - source_updated_at
       column-mapping:
         source_continent_pk: target_continent_id
         source_continent_name: target_continent_label
         source_continent_geom: target_continent_geometry
+        source_created_at: target_created_at
         source_updated_at: target_updated_at
       layer-name: source-continents-geoserver-layer
       srid: 4326
@@ -77,20 +81,24 @@ batch:
       source-table: source_admin_units.source_l2_countries
       target-table: target_admin_units.target_l2_country
       primary-key: source_country_pk
+      name-column: source_country_name
       partition-column: source_continent_fk
       geometry-column: source_country_geom
+      creation-date-column: source_created_at
       updated-at-column: source_updated_at
       where-clause: "1=1"
       persist-columns:
         - source_country_pk
         - source_country_name
         - source_continent_fk
+        - source_created_at
         - source_updated_at
       column-mapping:
         source_country_pk: target_country_id
         source_country_name: target_country_label
         source_continent_fk: target_continent_ref
         source_country_geom: target_country_geometry
+        source_created_at: target_created_at
         source_updated_at: target_updated_at
       layer-name: source-countries-geoserver-layer
       srid: 4326
@@ -100,19 +108,23 @@ batch:
       target-table: target_admin_units.target_l3_admin_division
       primary-key: source_area_pk
       partition-column: source_country_fk
+      name-column: source_area_name
       geometry-column: source_area_geom
+      creation-date-column: source_created_at
       updated-at-column: source_updated_at
       where-clause: "1=1"
       persist-columns:
         - source_area_pk
         - source_area_name
         - source_country_fk
+        - source_created_at
         - source_updated_at
       column-mapping:
         source_area_pk: target_division_id
         source_area_name: target_division_label
         source_country_fk: target_country_ref
         source_area_geom: target_division_geometry
+        source_created_at: target_created_at
         source_updated_at: target_updated_at
       layer-name: source-admin-areas-geoserver-layer
       srid: 4326
@@ -123,11 +135,11 @@ batch:
     primary-key: source_pk
     creation-date-column: source_created_at
     updated-at-column: source_updated_at
-    commune-id-column: source_territory_level_3_fk
+    territory-level-3-column: source_territory_level_3_fk
     total-area-column: source_area
     geometry-column: source_geom
     where-clause: "1=1"
-    # persist-columns:
+    # additional-columns:
     #   - source_optional_attr
     # business-only-persist-columns:
     #   - source_theme_1
@@ -138,23 +150,16 @@ batch:
     srid: 4326
     # sync-key default: area_of_interest
 
-  # Layers: setup step creates dsp.<table> on geo-target automatically.
-  # Mandatory source columns map to fixed target names:
-  #   primary-key -> id
-  #   area-of-interest-id-column -> area_of_interest_id
-  #   updated-at-column -> updated_at
-  #   label-column -> label
-  #   geometry-column -> geom
-  # Optional extras in persist-columns keep the same name on the target.
   layers:
     - source-table: source_layers.<table_name>
       primary-key: source_pk
       area-of-interest-id-column: source_aoi_fk
+      creation-date-column: source_created_at
       updated-at-column: source_updated_at
       label-column: source_name
       geometry-column: source_geom
       # srid: 4326
-      # persist-columns:
+      # additional-columns:
       #   - codigo
       #   - area_ha
 

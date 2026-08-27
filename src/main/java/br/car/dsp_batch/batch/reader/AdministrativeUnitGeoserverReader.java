@@ -5,8 +5,10 @@ import br.car.dsp_batch.batch.dto.AdministrativeUnitDTO;
 import br.car.dsp_batch.geometry.GeometrySql;
 import br.car.dsp_batch.sync.WatermarkSql;
 import br.car.dsp_batch.temporal.CommonTemporalHandler;
+import br.car.dsp_batch.temporal.TemporalColumnSpecs;
 import br.car.dsp_batch.temporal.TemporalTypeClassifier;
-import br.car.dsp_batch.temporal.WatermarkColumnSpec;
+import br.car.dsp_batch.temporal.TemporalColumnSpecs;
+import br.car.dsp_batch.temporal.WatermarkTemporalBridge;
 import org.springframework.batch.item.database.Order;
 import org.springframework.batch.item.database.PagingQueryProvider;
 import org.springframework.batch.item.database.support.PostgresPagingQueryProvider;
@@ -44,20 +46,20 @@ public class AdministrativeUnitGeoserverReader
                                              int pageSize,
                                              JobTableConfig tableConfig,
                                              Instant watermark,
-                                             WatermarkColumnSpec watermarkColumn,
+                                             TemporalColumnSpecs temporalColumns,
                                              String readerName) {
         super(dataSource, minId, maxId, pageSize);
         this.setName(readerName);
         boolean useIdRange = minId != null && maxId != null;
         this.setQueryProvider(createQueryProvider(
-                tableConfig, useIdRange, watermark, watermarkColumn));
+                tableConfig, useIdRange, watermark, temporalColumns));
         this.setRowMapper(new AdministrativeUnitRowMapper(tableConfig));
     }
 
     private PagingQueryProvider createQueryProvider(JobTableConfig tableConfig,
                                                     boolean useIdRange,
                                                     Instant watermark,
-                                                    WatermarkColumnSpec watermarkColumn) {
+                                                    TemporalColumnSpecs temporalColumns) {
         String partitionColumn = tableConfig.getPartitionColumn();
         String geom = tableConfig.getGeometryColumn();
         List<String> persistColumns = new ArrayList<>(tableConfig.getAllBusinessPersistColumns());
@@ -94,9 +96,12 @@ public class AdministrativeUnitGeoserverReader
             where.append(" AND (").append(configWhere).append(")");
         }
 
-        if (watermarkColumn != null) {
-            String updatedAtFilter = WatermarkSql.buildUpdatedAtFilter(watermarkColumn, watermark);
-            where.append(" AND ").append(updatedAtFilter);
+        if (temporalColumns != null) {
+            String changeFilter = WatermarkSql.buildChangeDetectionFilter(
+                    temporalColumns.creationDateColumn(),
+                    temporalColumns.updatedAtColumn(),
+                    watermark);
+            where.append(" AND ").append(changeFilter);
         }
 
         if (useIdRange) {
