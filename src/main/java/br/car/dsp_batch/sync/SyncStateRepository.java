@@ -12,7 +12,8 @@ import java.time.ZoneOffset;
 import java.util.Optional;
 
 /**
- * Persistence for incremental sync watermarks on the primary datasource ({@code batch_metadata}).
+ * Persistence for incremental sync watermarks on the primary (batch) datasource
+ * (schema {@code data_migration} on the destination database).
  */
 @Repository
 public class SyncStateRepository {

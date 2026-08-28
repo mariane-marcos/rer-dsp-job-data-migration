@@ -6,9 +6,9 @@ spring:
     name: dsp-batch
   datasource:
     batch:
-      url: jdbc:postgresql://localhost:5432/batch_metadata
-      username: batch
-      password: batch
+      url: jdbc:postgresql://localhost:5432/target_geo_db?currentSchema=data_migration
+      username: target_user
+      password: target_user
       driver-class-name: org.postgresql.Driver
       hikari:
         maximum-pool-size: 10
@@ -52,7 +52,7 @@ server:
   port: 8086
 
 batch:
-  source-timezone: UTC
+  source-timezone: America/Sao_Paulo
   admin-unit:
     level-1:
       source-table: source_admin_units.source_l1_continents

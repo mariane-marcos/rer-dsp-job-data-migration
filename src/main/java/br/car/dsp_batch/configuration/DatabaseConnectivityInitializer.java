@@ -15,7 +15,7 @@ import java.util.List;
 import java.util.Properties;
 
 /**
- * Checks all 3 databases before beans are created, logs every status, then fails only after reporting.
+ * Checks all 4 datasources before beans are created, logs every status, then fails only after reporting.
  * Runs as ApplicationContextInitializer so Spring Batch JobRepository does not connect first.
  */
 public class DatabaseConnectivityInitializer
@@ -28,7 +28,7 @@ public class DatabaseConnectivityInitializer
     public void initialize(ConfigurableApplicationContext applicationContext) {
         Environment env = applicationContext.getEnvironment();
 
-        log.info("Checking connectivity to the 4 databases...");
+        log.info("Checking connectivity to the 4 datasources...");
 
         List<CheckResult> results = List.of(
                 check("batch", env, "spring.datasource.batch"),
@@ -59,7 +59,7 @@ public class DatabaseConnectivityInitializer
                             + ". See status above and fix the connection before running the job.");
         }
 
-        log.info("All 4 databases are operational.");
+        log.info("All 4 datasources are operational.");
     }
 
     private CheckResult check(String name, Environment env, String prefix) {
